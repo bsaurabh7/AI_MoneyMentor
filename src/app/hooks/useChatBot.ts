@@ -83,7 +83,7 @@ function uid() {
 
 // ── Script ────────────────────────────────────────────────────────────────
 const OPENING_MSG =
-  "Hi! I'm FinPilot 👋 I'll help you find the best tax regime and plan your FIRE retirement — through a quick chat. Let's start!\n\nWhat's your **annual salary (CTC)**? (e.g. \"18 lakhs\" or \"18L\")";
+  "Hi! I'm Arthmize 👋 I'll help you find the best tax regime and plan your FIRE retirement — through a quick chat. Let's start!\n\nWhat's your **annual salary (CTC)**? (e.g. \"18 lakhs\" or \"18L\")";
 
 const QUICK_REPLIES: Record<ConversationStep, string[]> = {
   salary: ['₹12L', '₹18L', '₹24L', '₹36L'],
