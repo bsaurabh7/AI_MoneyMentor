@@ -6,7 +6,7 @@ interface Props {
   title?: string;
 }
 
-export function AIExplanationCard({ text, isLoading, title = 'FinPilot AI says' }: Props) {
+export function AIExplanationCard({ text, isLoading, title = 'Arthmize AI says' }: Props) {
   return (
     <div className="rounded-xl p-5 border border-[#C7D2FE]" style={{ background: '#EEF2FF' }}>
       <div className="flex items-center gap-2 mb-3">
