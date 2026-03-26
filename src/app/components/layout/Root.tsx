@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from 'react-router';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import {
   Calculator,
   Flame,
@@ -10,9 +10,11 @@ import {
   Menu,
   X,
   MessageCircle,
+  LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
 import { DisclaimerBanner } from '../shared/DisclaimerBanner';
+import { useAuth } from '../../context/AuthContext';
 
 const navItems = [
   { path: '/chat', label: 'AI Chat', icon: MessageCircle },
@@ -30,15 +32,49 @@ const pageTitles: Record<string, string> = {
   '/portfolio': 'MF Portfolio X-Ray',
 };
 
+// Mobile bottom nav height in px (used to offset chat input)
+const MOBILE_NAV_H = 56;
+
 export function Root() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, profile, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isChat = location.pathname === '/chat';
-  const pageTitle = pageTitles[location.pathname] ?? 'FinPilot AI';
+  const pageTitle = pageTitles[location.pathname] ?? 'Arthmize';
+
+  /* Derive display name: profile > user metadata > email prefix */
+  const displayName =
+    profile?.full_name ||
+    (user?.user_metadata?.full_name as string | undefined) ||
+    user?.email?.split('@')[0] ||
+    'User';
+
+  const initials = displayName
+    .split(' ')
+    .map((w: string) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden" style={{ fontFamily: 'Inter, sans-serif' }}>
+
+      {/* Custom narrow scrollbar */}
+      <style>{`
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #6366F1; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4F46E5; }
+        * { scrollbar-width: thin; scrollbar-color: #6366F1 transparent; }
+      `}</style>
+
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex flex-col w-[260px] flex-shrink-0 h-full" style={{ background: '#0F172A' }}>
         {/* Logo */}
@@ -46,15 +82,15 @@ export function Root() {
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#6366F1]">
             <Compass className="w-4 h-4 text-white" />
           </div>
-          <span className="text-white font-bold text-lg">FinPilot AI</span>
+          <span className="text-white font-bold text-lg">Arthmize</span>
         </div>
 
         {/* User Greeting */}
         <div className="flex items-center gap-3 px-6 py-4">
           <div className="w-8 h-8 rounded-full bg-[#6366F1] flex items-center justify-center text-white text-sm font-bold">
-            S
+            {initials}
           </div>
-          <span className="text-[#94A3B8] text-sm">Hello, Saurabh</span>
+          <span className="text-[#94A3B8] text-sm truncate">Hello, {displayName.split(' ')[0]}</span>
         </div>
 
         {/* Nav */}
@@ -88,6 +124,10 @@ export function Root() {
             <Settings className="w-4 h-4" />
             Settings
           </button>
+          <button onClick={handleSignOut} className="flex items-center gap-2 text-[#64748B] hover:text-red-400 text-sm transition-colors mt-2">
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </button>
           <p className="text-[#475569] text-xs mt-3 leading-relaxed">
             Not a licensed financial advisor. AI-generated analysis for educational purposes only.
           </p>
@@ -104,7 +144,7 @@ export function Root() {
                 <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#6366F1]">
                   <Compass className="w-4 h-4 text-white" />
                 </div>
-                <span className="text-white font-bold text-lg">FinPilot AI</span>
+                <span className="text-white font-bold text-lg">Arthmize</span>
               </div>
               <button onClick={() => setMobileOpen(false)} className="text-[#94A3B8]">
                 <X className="w-5 h-5" />
@@ -112,9 +152,9 @@ export function Root() {
             </div>
             <div className="flex items-center gap-3 px-6 py-4">
               <div className="w-8 h-8 rounded-full bg-[#6366F1] flex items-center justify-center text-white text-sm font-bold">
-                S
+                {initials}
               </div>
-              <span className="text-[#94A3B8] text-sm">Hello, Saurabh</span>
+              <span className="text-[#94A3B8] text-sm">Hello, {displayName.split(' ')[0]}</span>
             </div>
             <nav className="flex-1 px-3 space-y-1 mt-1">
               {navItems.map(({ path, label, icon: Icon }) => (
@@ -155,21 +195,26 @@ export function Root() {
           </header>
         )}
 
-        {/* Mobile menu trigger row on chat */}
+        {/* Mobile menu trigger on chat */}
         {isChat && (
-          <div className="md:hidden flex items-center px-4 py-2 bg-white border-b border-[#F1F5F9]">
+          <div className="md:hidden flex items-center px-4 py-2 bg-white border-b border-[#F1F5F9] flex-shrink-0">
             <button className="text-[#64748B]" onClick={() => setMobileOpen(true)}>
               <Menu className="w-5 h-5" />
             </button>
           </div>
         )}
 
-        {/* Scrollable Content */}
-        <main className={`flex-1 min-h-0 ${isChat ? 'overflow-hidden' : 'overflow-y-auto pb-20 md:pb-6'}`}>
+        {/* Scrollable Content
+            On mobile: leave room at the bottom for the fixed nav bar
+            On chat: overflow-hidden so the chat manages its own scroll */}
+        <main
+          className={`flex-1 min-h-0 ${isChat ? 'overflow-hidden' : 'overflow-y-auto pb-20 md:pb-6'}`}
+          style={isChat ? { paddingBottom: `${MOBILE_NAV_H}px` } : undefined}
+        >
           <Outlet />
         </main>
 
-        {/* Disclaimer Banner — hidden on chat (shown inline in summary) */}
+        {/* Disclaimer Banner — hidden on chat */}
         {!isChat && (
           <div className="hidden md:block px-6 py-2 bg-white border-t border-[#E2E8F0]">
             <DisclaimerBanner />
@@ -178,14 +223,17 @@ export function Root() {
       </div>
 
       {/* ── Mobile Bottom Tab Bar ── */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white border-t border-[#E2E8F0]">
-        <div className="flex">
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white border-t border-[#E2E8F0]"
+        style={{ height: MOBILE_NAV_H }}
+      >
+        <div className="flex h-full">
           {navItems.map(({ path, label, icon: Icon }) => (
             <NavLink
               key={path}
               to={path}
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${
+                `flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
                   isActive ? 'text-[#6366F1]' : 'text-[#94A3B8]'
                 }`
               }
