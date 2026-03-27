@@ -31,8 +31,11 @@ export function ChatScreen() {
         supabase.from('user_profiles').delete().eq('user_id', user.id),
         supabase.from('tax_calculations').delete().eq('user_id', user.id),
         supabase.from('fire_plans').delete().eq('user_id', user.id),
+        supabase.from('health_scores').delete().eq('user_id', user.id),
+        supabase.from('portfolio_funds').delete().eq('user_id', user.id),
+        supabase.from('portfolio_analysis').delete().eq('user_id', user.id),
       ]).then(() => {
-        alert('Success! Your financial data has been erased from the database.');
+        alert('Success! All your financial data has been erased from the database.');
         window.location.href = '/chat';
       });
     }
@@ -41,19 +44,20 @@ export function ChatScreen() {
   // Populate wizardData from global profile if it exists
   useEffect(() => {
     if (user && profile && profile.annual_income) {
-      const p = profile;
+      const p = profile as any;
       const mapped: CollectedData = {
         demographics: {
           age: p.date_of_birth ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear() : undefined,
-          city_type: (p.city_type as any) || undefined,
-          employment_type: (p.employment_type as any) || undefined,
-          marital_status: (p.marital_status as any) || undefined,
+          city_type: p.city_type || undefined,
+          employment_type: p.employment_type || undefined,
+          marital_status: p.marital_status || undefined,
         },
         income: {
           base_salary: p.annual_income ?? undefined,
           hra_received: p.hra_received || 0,
           secondary_income_monthly: p.secondary_income_monthly || 0,
           passive_income_monthly: p.passive_income_monthly || 0,
+          epf_monthly: p.epf_monthly || 0,
         },
         expenses: {
           fixed_monthly: p.monthly_expense || 0,
@@ -62,9 +66,17 @@ export function ChatScreen() {
         },
         assets: {
           emergency_fund: p.emergency_fund || 0,
+          current_savings: p.current_savings || 0,
           deduction_80c: p.deduction_80c || 0,
           deduction_80d: p.deduction_80d || 0,
           nps_80ccd: p.nps_80ccd || 0,
+          monthly_sip: p.monthly_sip || 0,
+          total_investments: p.total_investments || 0,
+          has_term_insurance: p.has_term_insurance ?? undefined,
+          has_health_insurance: p.has_health_insurance ?? undefined,
+          emergency_months: p.emergency_months ?? undefined,
+          expected_return: p.expected_return || 0.12,
+          tax_regime_chosen: p.tax_regime_chosen ?? undefined,
         },
         liabilities: {
           home_loan_emi: p.home_loan_emi || 0,
