@@ -379,6 +379,8 @@ export function calculateHealthScore(inputs: HealthInputs): HealthResponse {
 export interface Fund {
   id: string;
   name: string;
+  sip_amount: number;
+  sip_start_date: string;
   amount_invested: number;
   current_value: number;
   category: string;
