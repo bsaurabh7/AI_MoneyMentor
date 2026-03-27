@@ -14,6 +14,8 @@ const CATEGORIES = [
   { value: 'international', label: 'International' },
 ];
 
+// Added Color for cap
+
 const CATEGORY_COLORS: Record<string, string> = {
   large_cap: '#6366F1',
   flexi_cap: '#F59E0B',
