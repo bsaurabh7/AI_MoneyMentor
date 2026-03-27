@@ -38,14 +38,14 @@ function getStrength(pw: string): { score: number; label: string; color: string 
 }
 
 /* ── OTP Input ── */
-function OTPInput({ onComplete }: { onComplete?: (otp: string) => void }) {
-  const [values, setValues] = useState(['', '', '', '', '', '']);
+function OTPInput({ onComplete, length = 8 }: { onComplete?: (otp: string) => void, length?: number }) {
+  const [values, setValues] = useState(Array(length).fill(''));
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
   const handleChange = (i: number, val: string) => {
     if (!/^\d?$/.test(val)) return;
     const next = [...values]; next[i] = val; setValues(next);
-    if (val && i < 5) refs.current[i + 1]?.focus();
+    if (val && i < length - 1) refs.current[i + 1]?.focus();
     if (next.every((v) => v)) onComplete?.(next.join(''));
   };
   const handleKey = (i: number, e: React.KeyboardEvent) => {
@@ -63,7 +63,7 @@ function OTPInput({ onComplete }: { onComplete?: (otp: string) => void }) {
           onKeyDown={(e) => handleKey(i, e)}
           className="text-center text-[#0F172A] outline-none transition-all"
           style={{
-            width: 40, height: 44, fontSize: 18, fontWeight: 700,
+            width: 36, height: 44, fontSize: 18, fontWeight: 700,
             border: v ? '2px solid #6366F1' : '1px solid #E2E8F0',
             borderRadius: 8, background: v ? '#EEF2FF' : '#fff',
           }}
@@ -340,7 +340,7 @@ function LoginForm({ onForgot, onEnterApp }: { onForgot: () => void; onEnterApp:
    REGISTER FORM — compact 2-col layout
 ══════════════════════════════════════ */
 function RegisterForm({ onEnterApp }: { onEnterApp: () => void }) {
-  const { signUp, sendOtp, signInGoogle } = useAuth();
+  const { signUp, sendOtp, verifyOtp, signInGoogle } = useAuth();
 
   const [name, setName]       = useState('');
   const [email, setEmail]     = useState('');
@@ -368,23 +368,31 @@ function RegisterForm({ onEnterApp }: { onEnterApp: () => void }) {
     setOtpLoading(false);
     if (result.success) {
       setOtpSent(true);
+      setOtpVerified(false);
       setOtpCountdown(30);
       setInfo('OTP sent — check your inbox.');
       const t = setInterval(() => setOtpCountdown(c => { if (c <= 1) { clearInterval(t); return 0; } return c - 1; }), 1000);
     } else {
-      // If Supabase says user doesn't exist, that's fine — we still proceed to allow new signups
-      // For new users, we send a verify OTP through signUp flow later
-      setOtpSent(true);
-      setOtpCountdown(30);
-      setInfo('OTP sent — check your inbox.');
-      const t = setInterval(() => setOtpCountdown(c => { if (c <= 1) { clearInterval(t); return 0; } return c - 1; }), 1000);
+      setError(result.message || 'Failed to send OTP.');
     }
   };
 
   /* ── OTP complete ── */
-  const handleOtpComplete = (otp: string) => {
-    // Mark verified locally — actual Supabase OTP verify happens on signUp
-    if (otp.length === 6) setOtpVerified(true);
+  const handleOtpComplete = async (otp: string) => {
+    if (otp.length === 8) {
+      setOtpLoading(true);
+      setError('');
+      setInfo('');
+      const result = await verifyOtp(email, otp);
+      setOtpLoading(false);
+      if (result.success) {
+        setOtpVerified(true);
+        setInfo('Email verified successfully.');
+      } else {
+        setError(result.message || 'Invalid OTP');
+        setOtpVerified(false);
+      }
+    }
   };
 
   /* ── Submit registration ── */
@@ -468,10 +476,10 @@ function RegisterForm({ onEnterApp }: { onEnterApp: () => void }) {
       {otpSent && !otpVerified && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[#64748B]" style={{ fontSize: 12 }}>Enter 6-digit OTP</label>
+            <label className="text-[#64748B]" style={{ fontSize: 12 }}>Enter 8-digit OTP</label>
             <span className="text-[#10B981] font-medium" style={{ fontSize: 11 }}>Sent ✓</span>
           </div>
-          <OTPInput onComplete={handleOtpComplete} />
+          <OTPInput onComplete={handleOtpComplete} length={8} />
           <p className="text-center mt-1" style={{ fontSize: 11, color: '#94A3B8' }}>Enter the code from your email</p>
         </div>
       )}
@@ -505,11 +513,11 @@ function RegisterForm({ onEnterApp }: { onEnterApp: () => void }) {
       </div>
 
       {/* CTA */}
-      <button type="submit" disabled={loading}
-        className="w-full text-white font-bold hover:bg-[#4F46E5] transition-colors flex items-center justify-center gap-2 disabled:opacity-70"
+      <button type="submit" disabled={loading || !otpVerified}
+        className="w-full text-white font-bold hover:bg-[#4F46E5] transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
         style={{ height: 44, background: '#6366F1', borderRadius: 10, fontSize: 14, marginTop: 4 }}>
         {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-        {loading ? 'Creating account…' : 'Create Account'}
+        {!otpVerified ? 'Verify Email to Continue' : loading ? 'Creating account…' : 'Create Account'}
       </button>
 
       <Divider />
