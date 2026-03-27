@@ -5,14 +5,19 @@ import { BotBubble, UserBubble, TypingIndicator } from '../chat/ChatBubble';
 import { ChatTaxCard } from '../chat/ChatTaxCard';
 import { ChatFireCard } from '../chat/ChatFireCard';
 import { SummaryPanel } from '../chat/SummaryPanel';
+import { ProfileWizard } from '../onboarding/ProfileWizard';
+import type { CollectedData } from '../../hooks/useCollectedData';
 
 export function ChatScreen() {
   const [input, setInput] = useState('');
+  const [wizardData, setWizardData] = useState<CollectedData | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const showWizard = wizardData === null;
+
   const { messages, sendMessage, isTyping, step, collected, taxResult, fireResult, progress, quickReplies } =
-    useChatBot();
+    useChatBot(wizardData ?? undefined);
 
   // Auto-scroll
   useEffect(() => {
@@ -38,8 +43,15 @@ export function ChatScreen() {
     sendMessage(text);
   };
 
+  const handleWizardComplete = (data: CollectedData) => {
+    setWizardData(data);
+  };
+
   return (
     <div className="flex h-full" style={{ fontFamily: 'Inter, sans-serif' }}>
+      {/* ── Profile Wizard Overlay ──────────────────────────────── */}
+      {showWizard && <ProfileWizard onComplete={handleWizardComplete} />}
+
       {/* ── Chat Panel ─────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 border-r border-[#E2E8F0] bg-white lg:max-w-[560px]">
         {/* Chat Top Bar */}
@@ -49,7 +61,7 @@ export function ChatScreen() {
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="text-[#0F172A] font-bold text-sm leading-tight">Arthmize AI</p>
+              <p className="text-[#0F172A] font-bold text-sm leading-tight">FinPilot AI</p>
               <p className="text-[#94A3B8] text-xs leading-tight">Tax &amp; FIRE Advisor</p>
             </div>
           </div>
@@ -57,7 +69,7 @@ export function ChatScreen() {
             {/* Progress pill */}
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EEF2FF] border border-[#C7D2FE]">
               <div className="w-1.5 h-1.5 rounded-full bg-[#6366F1] animate-pulse" />
-              <span className="text-[#4338CA] text-xs font-medium">{progress}% collected</span>
+              <span className="text-[#4338CA] text-xs font-medium">{progress}% profile</span>
             </div>
             <button
               onClick={() => window.location.reload()}
@@ -72,21 +84,11 @@ export function ChatScreen() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#F8FAFC]">
           {messages.map((msg) => {
-            if (msg.role === 'user') {
-              return <UserBubble key={msg.id} content={msg.content} />;
-            }
-            if (msg.type === 'typing') {
-              return <TypingIndicator key={msg.id} />;
-            }
-            if (msg.type === 'text') {
-              return <BotBubble key={msg.id} content={msg.content} />;
-            }
-            if (msg.type === 'tax_result') {
-              return <ChatTaxCard key={msg.id} data={msg.data} />;
-            }
-            if (msg.type === 'fire_result') {
-              return <ChatFireCard key={msg.id} data={msg.data} retireAge={msg.retireAge} />;
-            }
+            if (msg.role === 'user') return <UserBubble key={msg.id} content={msg.content} />;
+            if (msg.type === 'typing') return <TypingIndicator key={msg.id} />;
+            if (msg.type === 'text') return <BotBubble key={msg.id} content={msg.content} />;
+            if (msg.type === 'tax_result') return <ChatTaxCard key={msg.id} data={msg.data} />;
+            if (msg.type === 'fire_result') return <ChatFireCard key={msg.id} data={msg.data} retireAge={msg.retireAge} />;
             return null;
           })}
           {isTyping && <TypingIndicator />}
@@ -121,12 +123,12 @@ export function ChatScreen() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Type your answer..."
-            disabled={isTyping}
+            disabled={isTyping || showWizard}
             className="flex-1 px-4 py-2.5 rounded-full bg-[#F1F5F9] text-[#0F172A] text-sm placeholder-[#94A3B8] outline-none focus:bg-white focus:ring-2 focus:ring-[#6366F1]/30 transition-all disabled:opacity-60"
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || isTyping}
+            disabled={!input.trim() || isTyping || showWizard}
             className="w-10 h-10 rounded-full bg-[#6366F1] hover:bg-[#4F46E5] text-white flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40"
           >
             <Send className="w-4 h-4" />
