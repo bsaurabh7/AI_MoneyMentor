@@ -33,7 +33,6 @@ const INITIAL_FUNDS: Fund[] = [
 
 let nextId = 4;
 
-const GEMINI_API_KEY = 'AIzaSyALnVElxdzKve6DXxFkLIFzWTHx_w9zZcs';
 
 async function fetchCurrentValuesFromGemini(funds: Fund[]): Promise<Fund[]> {
   const prompt = `
@@ -58,7 +57,7 @@ Example output:
 `;
 
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_API_KEY}`, {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${import.meta.env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -66,21 +65,21 @@ Example output:
         generationConfig: { temperature: 0.1, response_mime_type: "application/json" }
       })
     });
-    
+
     if (!res.ok) throw new Error("API Error");
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error("No response");
-    
+
     const parsed = JSON.parse(text);
     return funds.map(f => {
       const match = parsed.find((p: any) => p.id === f.id);
-      
+
       const start = new Date(f.sip_start_date || '2020-01');
       const now = new Date();
       const months = Math.max(1, (now.getFullYear() - start.getFullYear()) * 12 + now.getMonth() - start.getMonth());
       const fallbackInvested = f.sip_amount * months;
-      
+
       return {
         ...f,
         amount_invested: match?.amount_invested || fallbackInvested,
