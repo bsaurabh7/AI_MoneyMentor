@@ -79,22 +79,22 @@ Enter your funds manually. Get overlap heatmap, expense ratio drag, XIRR vs Nift
 ## 🏗 Agent Architecture
 
 ```
-User Chat
-    │
-    ▼
+                            User Chat
+                                │
+                                ▼
 Collector Agent   →   gathers your data conversationally (no boring forms)
-    │
-    ▼
+                                │
+                                ▼
 Calculation Agent →   deterministic math — tax slabs, FIRE projections (no LLM)
-    │
-    ▼
+                                │
+                                ▼
 Reasoning Agent   →   Claude AI explains WHY and WHAT to do next
-    │
-    ▼
+                                │
+                                ▼
 Guardrail Agent   →   SEBI compliance check + disclaimer injection
-    │
-    ▼
-Your Dashboard
+                                │
+                                ▼
+                         Your Dashboard
 ```
 
 > Claude only reasons and recommends — never calculates. Results are always auditable.
