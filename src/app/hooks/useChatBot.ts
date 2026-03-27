@@ -1,9 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { calculateTax, calculateFIRE, type TaxResponse, type FireResponse } from '../utils/finCalc';
 import type { CollectedData } from './useCollectedData';
 import {
   getSalary, getHRA, getRent, getCityType, get80C, get80D, getNPS, getCurrentAge, getTotalMonthlyExpense
 } from './useCollectedData';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 // Re-export CollectedData for backwards compat with ChatScreen/SummaryPanel
 export type { CollectedData };
@@ -22,7 +24,7 @@ type ConversationStep =
   // ── Transition ──
   | 'tax_computing' | 'ask_fire'
   // ── FIRE ──
-  | 'fire_age' | 'fire_expenses' | 'fire_savings' | 'fire_computing'
+  | 'fire_age' | 'fire_retire_age_only' | 'fire_expenses' | 'fire_savings' | 'fire_computing'
   // ── Phase 2: deeper profiling ──
   | 'p2_secondary_income' | 'p2_passive_income' | 'p2_expenses_detail'
   | 'p2_insurance' | 'p2_home_loan' | 'p2_home_loan_interest' | 'p2_credit_card'
@@ -82,6 +84,7 @@ const QUICK_REPLIES: Record<ConversationStep, string[]> = {
   tax_computing: [],
   ask_fire: ['Yes, plan my retirement 🔥', 'Show detailed breakdown', 'Start over'],
   fire_age: ['30 yrs, retire at 50', '28 yrs, retire at 45', '35 yrs, retire at 55'],
+  fire_retire_age_only: [],
   fire_expenses: ['₹50K/month', '₹80K/month', '₹1.2L/month'],
   fire_savings: ['₹15L', '₹50L', 'Nothing yet'],
   fire_computing: [],
@@ -100,6 +103,7 @@ const QUICK_REPLIES: Record<ConversationStep, string[]> = {
 
 // ── Hook ──────────────────────────────────────────────────────────────────
 export function useChatBot(initialData?: CollectedData) {
+  const { user } = useAuth();
   const hasWizardData = !!initialData?.income?.base_salary;
 
   // Opening message depends on whether wizard gave us data
@@ -179,22 +183,69 @@ export function useChatBot(initialData?: CollectedData) {
       const result = calculateTax(taxInputs);
       setTaxResult(result);
       await addResultCard('tax_result', result, undefined, 800);
+
+      if (user) {
+        // Persist tax calculations & initial profile data
+        const taxPromise = supabase.from('tax_calculations').upsert({
+          user_id: user.id,
+          financial_year: '2024-25',
+          salary: taxInputs.salary,
+          hra_received: taxInputs.hra_received,
+          rent_paid: taxInputs.rent_paid,
+          deduction_80c: taxInputs.deduction_80c,
+          deduction_80d: taxInputs.deduction_80d,
+          nps_80ccd: taxInputs.nps_80ccd,
+          old_regime_tax: result.old_regime.total_tax,
+          new_regime_tax: result.new_regime.total_tax,
+          recommended_regime: result.winner === 'new' ? 'new' : 'old',
+          savings_amount: result.savings,
+          ai_reasoning: result.reasoning,
+        }, { onConflict: 'user_id, financial_year' }).then(({ error }) => { if (error) console.error('Tax upsert error:', error); });
+
+        const profilePromise = supabase.from('user_profiles').upsert({
+          user_id: user.id,
+          annual_income: taxInputs.salary,
+          hra_received: taxInputs.hra_received,
+          rent_paid_monthly: taxInputs.rent_paid,
+          city_type: taxInputs.city_type,
+          deduction_80c: taxInputs.deduction_80c,
+          nps_80ccd: taxInputs.nps_80ccd,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' }).then(({ error }) => { if (error) console.error('Profile upsert start error:', error); });
+        
+        // Fire & forget
+        Promise.all([taxPromise, profilePromise]);
+      }
+
       setTimeout(async () => {
         setStep('ask_fire');
+        const age = data.demographics?.age;
         await addBotMessage(
-          `Want me to also plan your **FIRE retirement**? 🎯\n\nJust tell me your age and when you want to retire — I'll build a full corpus and SIP plan!`,
+          `Want me to also plan your **FIRE retirement**? 🎯\n\n${age ? `I see you are ${age} years old. When do you want to retire?` : `Just tell me your age and when you want to retire — I'll build a full corpus and SIP plan!`}`,
           700
         );
       }, 400);
     },
-    [addBotMessage, addResultCard]
+    [addBotMessage, addResultCard, user]
   );
 
-  // Auto-trigger for wizard path
-  if (hasWizardData && !hasTriggeredRef.current && step === 'tax_computing') {
-    hasTriggeredRef.current = true;
-    setTimeout(() => runTaxAndAskFire(initialData!), 1200);
-  }
+  // React to wizard data being provided after mount
+  useEffect(() => {
+    if (initialData?.income?.base_salary && !hasTriggeredRef.current) {
+      hasTriggeredRef.current = true;
+      setCollected(initialData);
+      setStep('tax_computing');
+      const salary = initialData.income.base_salary;
+      setMessages([{ 
+        id: uid(), 
+        role: 'bot', 
+        type: 'text', 
+        content: `Great! I've got your profile details 👋\n\nRunning your **Tax Analysis** now — calculating Old Regime vs New Regime for your ₹${(salary / 100_000).toFixed(1)}L salary... 🧮` 
+      }]);
+      // Small delay for visual effect
+      setTimeout(() => runTaxAndAskFire(initialData), 1200);
+    }
+  }, [initialData, runTaxAndAskFire]);
 
   const processStep = useCallback(
     async (userText: string, currentStep: ConversationStep, currentCollected: CollectedData) => {
@@ -290,11 +341,36 @@ export function useChatBot(initialData?: CollectedData) {
         case 'ask_fire': {
           const lower = userText.toLowerCase();
           if (/start over|restart|reset/.test(lower)) { window.location.reload(); return; }
-          nextStep = 'fire_age';
-          await addBotMessage(
-            "Let's plan your retirement 🔥\n\nHow **old are you** and at what age do you want to **retire**? (e.g. \"I'm 34, want to retire at 50\")"
-          );
+          
+          if (parseYesNo(userText) === false || lower.includes('no') || lower.includes('skip') || lower.includes('nah')) {
+            nextStep = 'p2_secondary_income';
+            await addBotMessage("No problem! Let's skip retirement planning for now.\n\nNow let me build your **Money Health Score**. Quick follow-ups:\n\nDo you have any **secondary income**? (Freelance, side hustles, part-time)", 400);
+            break;
+          }
+
+          const hasAge = !!newData.demographics?.age;
+          if (hasAge) {
+             nextStep = 'fire_retire_age_only';
+             await addBotMessage(`Since you are ${newData.demographics!.age} years old, at what age do you want to retire?`);
+          } else {
+             nextStep = 'fire_age';
+             await addBotMessage("Let's plan your retirement 🔥\n\nHow **old are you** and at what age do you want to **retire**? (e.g. \"I'm 34, want to retire at 50\")");
+          }
           break;
+        }
+
+        case 'fire_retire_age_only': {
+           const nums = userText.match(/\d+/g)?.map(Number) ?? [];
+           const retireAge = nums.length > 0 ? nums[0] : 0;
+           if (newData.demographics?.age && retireAge > newData.demographics.age) {
+             newData = { ...newData, demographics: { ...newData.demographics, target_retirement_age: retireAge } };
+             setCollected(newData);
+             nextStep = 'fire_expenses';
+             await addBotMessage(`Retiring at ${retireAge} ✓\n\nWhat are your **total monthly expenses** roughly? (Include rent, EMIs, groceries, utilities)`);
+           } else {
+             await addBotMessage("Could you share your target retirement age? It should be higher than your current age!");
+           }
+           break;
         }
 
         case 'fire_age': {
@@ -303,7 +379,7 @@ export function useChatBot(initialData?: CollectedData) {
           if (nums.length >= 2) { age = nums[0]; retireAge = nums[1]; }
           else if (nums.length === 1) { age = nums[0]; retireAge = 50; }
           if (age >= 18 && retireAge > age) {
-            newData = { ...newData, demographics: { ...newData.demographics, age } };
+            newData = { ...newData, demographics: { ...newData.demographics, age, target_retirement_age: retireAge } };
             setCollected(newData);
             nextStep = 'fire_expenses';
             await addBotMessage(`Age ${age}, retiring at ${retireAge} ✓\n\nWhat are your **total monthly expenses** roughly? (Include rent, EMIs, groceries, utilities)`);
@@ -332,6 +408,7 @@ export function useChatBot(initialData?: CollectedData) {
           const amount = parseAmount(userText);
           const isNone = /nothing|zero|none|no|nil|nahi/.test(userText.toLowerCase());
           const savings = isNone ? 0 : (amount || 0);
+          newData = { ...newData, assets: { ...newData.assets, current_savings: savings } }; // Update newData with savings
           setCollected(newData);
           nextStep = 'fire_computing';
 
@@ -340,7 +417,7 @@ export function useChatBot(initialData?: CollectedData) {
             const age = getCurrentAge(newData);
             const fireInputs = {
               current_age: age,
-              retire_age: (newData.demographics?.age ? age + 20 : 50),
+              retire_age: newData.demographics?.target_retirement_age || (newData.demographics?.age ? age + 20 : 50),
               annual_income: getSalary(newData),
               monthly_expense: getTotalMonthlyExpense(newData) || (newData.expenses?.fixed_monthly ?? 60000),
               current_savings: savings,
@@ -349,6 +426,27 @@ export function useChatBot(initialData?: CollectedData) {
             const result = calculateFIRE(fireInputs);
             setFireResult(result);
             await addResultCard('fire_result', result, fireInputs.retire_age, 900);
+
+            if (user) {
+              supabase.from('fire_plans').upsert({
+                user_id: user.id,
+                current_age: fireInputs.current_age,
+                retire_age: fireInputs.retire_age,
+                corpus_needed: result.corpus_needed,
+                sip_per_month: result.sip_per_month,
+                feasibility: result.feasibility === 'on track' ? 'on track' : result.feasibility === 'stretch goal' ? 'stretch goal' : 'needs revision',
+                ai_reasoning: result.reasoning,
+              }, { onConflict: 'user_id' }).then(({ error: e }) => { if (e) console.error('FIRE upsert err:', e); });
+
+              // Also update profile with age, expenses, savings
+              supabase.from('user_profiles').upsert({
+                user_id: user.id,
+                date_of_birth: newData.demographics?.age ? new Date(new Date().getFullYear() - newData.demographics.age, 0, 1).toISOString().split('T')[0] : null,
+                monthly_expense: fireInputs.monthly_expense,
+                current_savings: fireInputs.current_savings,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'user_id' }).then(({ error: e }) => { if (e) console.error('Profile upsert (fire) err:', e); });
+            }
 
             setTimeout(async () => {
               setStep('p2_secondary_income');
@@ -472,6 +570,30 @@ export function useChatBot(initialData?: CollectedData) {
           setCollected(newData);
           nextStep = 'done';
           setStep('done');
+
+          if (user) {
+            // Final profile sync
+            supabase.from('user_profiles').upsert({
+              user_id: user.id,
+              annual_income: getSalary(newData),
+              hra_received: getHRA(newData),
+              secondary_income_monthly: newData.income?.secondary_income_monthly ?? 0,
+              passive_income_monthly: newData.income?.passive_income_monthly ?? 0,
+              monthly_expense: getTotalMonthlyExpense(newData),
+              rent_paid_monthly: getRent(newData),
+              health_insurance_premium: newData.expenses?.health_insurance_premium ?? 0,
+              current_savings: newData.assets?.current_savings ?? 0, // Use current_savings from assets
+              emergency_fund: newData.assets?.emergency_fund ?? 0,
+              deduction_80c: get80C(newData),
+              deduction_80d: get80D(newData),
+              nps_80ccd: getNPS(newData),
+              home_loan_emi: newData.liabilities?.home_loan_emi ?? 0,
+              home_loan_interest_annual: newData.liabilities?.home_loan_interest_annual ?? 0,
+              credit_card_debt: newData.liabilities?.credit_card_debt ?? 0,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' }).then(({ error: e }) => { if (e) console.error('Final profile upsert err:', e); });
+          }
+
           await addBotMessage(
             `🎯 **Money Health Score complete!**\n\nI now have a full financial picture. Check your **Money Health Score** and **Portfolio X-Ray** in the sidebar — they'll reflect your complete profile.\n\n*Not financial advice — consult a SEBI-registered advisor.*`,
             800
@@ -510,7 +632,7 @@ export function useChatBot(initialData?: CollectedData) {
 
       if (nextStep !== currentStep) setStep(nextStep);
     },
-    [addBotMessage, addResultCard, collected, runTaxAndAskFire]
+    [addBotMessage, addResultCard, collected, runTaxAndAskFire, user]
   );
 
   const sendMessage = useCallback(

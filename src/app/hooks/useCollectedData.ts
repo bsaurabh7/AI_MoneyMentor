@@ -11,6 +11,8 @@ export interface Demographics {
   spouse_earning?: boolean;
   /** Number of dependent children + parents */
   dependents?: number;
+  /** User defined retirement age */
+  target_retirement_age?: number;
 }
 
 export interface IncomeStreams {
@@ -62,6 +64,8 @@ export interface Assets {
   real_estate_value?: number;
   /** Gold + other physical assets */
   gold_other?: number;
+  /** Total current accumulated savings/corpus */
+  current_savings?: number;
 }
 
 export interface Liabilities {

@@ -6,15 +6,85 @@ import { ChatTaxCard } from '../chat/ChatTaxCard';
 import { ChatFireCard } from '../chat/ChatFireCard';
 import { SummaryPanel } from '../chat/SummaryPanel';
 import { ProfileWizard } from '../onboarding/ProfileWizard';
+import { useAuth } from '../../context/AuthContext';
+import { AuthModal } from '../auth/AuthModal';
+import { supabase } from '../../../lib/supabase';
 import type { CollectedData } from '../../hooks/useCollectedData';
+import { Loader2 } from 'lucide-react';
+
+const FREE_KEY = 'fp_free_used';
 
 export function ChatScreen() {
+  const { user, profile, loading: authLoading } = useAuth();
   const [input, setInput] = useState('');
   const [wizardData, setWizardData] = useState<CollectedData | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('register');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const showWizard = wizardData === null;
+  // Magic Data Reset URL param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('RemoveData') === 'true' && user) {
+      Promise.all([
+        supabase.from('user_profiles').delete().eq('user_id', user.id),
+        supabase.from('tax_calculations').delete().eq('user_id', user.id),
+        supabase.from('fire_plans').delete().eq('user_id', user.id),
+      ]).then(() => {
+        alert('Success! Your financial data has been erased from the database.');
+        window.location.href = '/chat';
+      });
+    }
+  }, [user]);
+
+  // Populate wizardData from global profile if it exists
+  useEffect(() => {
+    if (user && profile && profile.annual_income) {
+      const p = profile;
+      const mapped: CollectedData = {
+        demographics: {
+          age: p.date_of_birth ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear() : undefined,
+          city_type: (p.city_type as any) || undefined,
+          employment_type: (p.employment_type as any) || undefined,
+          marital_status: (p.marital_status as any) || undefined,
+        },
+        income: {
+          base_salary: p.annual_income ?? undefined,
+          hra_received: p.hra_received || 0,
+          secondary_income_monthly: p.secondary_income_monthly || 0,
+          passive_income_monthly: p.passive_income_monthly || 0,
+        },
+        expenses: {
+          fixed_monthly: p.monthly_expense || 0,
+          rent_paid_monthly: p.rent_paid_monthly || 0,
+          health_insurance_premium: p.health_insurance_premium || 0,
+        },
+        assets: {
+          emergency_fund: p.emergency_fund || 0,
+          deduction_80c: p.deduction_80c || 0,
+          deduction_80d: p.deduction_80d || 0,
+          nps_80ccd: p.nps_80ccd || 0,
+        },
+        liabilities: {
+          home_loan_emi: p.home_loan_emi || 0,
+          home_loan_interest_annual: p.home_loan_interest_annual || 0,
+          credit_card_debt: p.credit_card_debt || 0,
+        }
+      };
+      setWizardData(mapped);
+    }
+  }, [user, profile]);
+
+  // Check if guest has exhausted their free shot
+  const [hasUsedFree, setHasUsedFree] = useState(false);
+  useEffect(() => {
+    if (!user && localStorage.getItem(FREE_KEY)) {
+      setHasUsedFree(true);
+    }
+  }, [user]);
+
+  const showWizard = !authLoading && wizardData === null && !hasUsedFree;
 
   const { messages, sendMessage, isTyping, step, collected, taxResult, fireResult, progress, quickReplies } =
     useChatBot(wizardData ?? undefined);
@@ -23,6 +93,16 @@ export function ChatScreen() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  // When tax result drops for a guest, mark them as used
+  useEffect(() => {
+    if (!user && taxResult && !hasUsedFree) {
+      localStorage.setItem(FREE_KEY, Date.now().toString());
+      setHasUsedFree(true);
+    }
+  }, [taxResult, user, hasUsedFree]);
+
+  const showGuestBlur = !user && hasUsedFree && taxResult;
 
   const handleSend = () => {
     if (!input.trim() || isTyping) return;
@@ -48,9 +128,38 @@ export function ChatScreen() {
   };
 
   return (
-    <div className="flex h-full" style={{ fontFamily: 'Inter, sans-serif' }}>
+    <div className="flex h-full relative" style={{ fontFamily: 'Inter, sans-serif' }}>
+      {/* ── Loading Overlay ─────────────────────────────────────── */}
+      {authLoading && (
+        <div className="absolute inset-0 z-50 bg-[#F8FAFC] flex flex-col items-center justify-center">
+          <Loader2 className="w-8 h-8 text-[#6366F1] animate-spin mb-4" />
+          <p className="text-[#64748B] font-medium">Checking session...</p>
+        </div>
+      )}
+
       {/* ── Profile Wizard Overlay ──────────────────────────────── */}
       {showWizard && <ProfileWizard onComplete={handleWizardComplete} />}
+
+      {/* ── Guest Exhausted Screen (Before Wizard) ──────────────── */}
+      {!user && hasUsedFree && !taxResult && !wizardData && (
+        <div className="absolute inset-0 z-50 bg-[#F8FAFC] flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 bg-[#EEF2FF] text-[#6366F1] rounded-2xl flex items-center justify-center mb-6">
+            <Bot className="w-8 h-8" />
+          </div>
+          <h2 className="text-[#0F172A] text-2xl font-bold mb-3">Welcome back!</h2>
+          <p className="text-[#64748B] max-w-sm mb-8">
+            You've used your free AI analysis. Sign in to your account to review your profile and unlock the FIRE planner.
+          </p>
+          <div className="flex gap-4">
+            <button onClick={() => { setAuthTab('login'); setAuthOpen(true); }} className="px-6 py-2.5 rounded-xl border border-[#E2E8F0] font-medium text-[#0F172A] hover:bg-slate-50 transition-colors">
+              Login
+            </button>
+            <button onClick={() => { setAuthTab('register'); setAuthOpen(true); }} className="px-6 py-2.5 rounded-xl bg-[#6366F1] font-medium text-white hover:bg-[#4F46E5] transition-colors">
+              Sign Up Free
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Chat Panel ─────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 border-r border-[#E2E8F0] bg-white lg:max-w-[560px]">
@@ -91,48 +200,65 @@ export function ChatScreen() {
             if (msg.type === 'fire_result') return <ChatFireCard key={msg.id} data={msg.data} retireAge={msg.retireAge} />;
             return null;
           })}
-          {isTyping && <TypingIndicator />}
           <div ref={chatEndRef} />
         </div>
 
-        {/* Quick Reply Chips */}
-        {quickReplies.length > 0 && (
-          <div className="px-4 py-2.5 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0">
-            {quickReplies.map((chip) => (
+        {/* Input Bar (disabled with blur if guest used feature) */}
+        <div className="relative">
+          {showGuestBlur && (
+            <div className="absolute inset-x-0 bottom-full h-48 bg-gradient-to-t from-white via-white/80 to-transparent z-10 pointer-events-none" />
+          )}
+          
+          {showGuestBlur && (
+            <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center border-t border-[#E2E8F0]">
+              <p className="text-[#0F172A] font-bold text-sm mb-2">Sign in to continue chat 🔒</p>
               <button
-                key={chip}
-                onClick={() => handleQuickReply(chip)}
-                disabled={isTyping}
-                className="flex-shrink-0 px-3 py-1.5 rounded-full border border-[#E2E8F0] bg-white text-[#374151] text-xs font-medium hover:border-[#6366F1] hover:text-[#6366F1] hover:bg-[#EEF2FF] transition-all disabled:opacity-40"
+                onClick={() => { setAuthTab('register'); setAuthOpen(true); }}
+                className="px-5 py-2 rounded-full bg-[#6366F1] text-white text-xs font-bold hover:bg-[#4F46E5] shadow-sm"
               >
-                {chip}
+                Create Free Account
               </button>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* Input Bar */}
-        <div className="flex items-center gap-2.5 px-4 py-3 bg-white border-t border-[#E2E8F0] flex-shrink-0">
-          <button className="text-[#94A3B8] hover:text-[#6366F1] transition-colors flex-shrink-0">
-            <Mic className="w-5 h-5" />
-          </button>
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Type your answer..."
-            disabled={isTyping || showWizard}
-            className="flex-1 px-4 py-2.5 rounded-full bg-[#F1F5F9] text-[#0F172A] text-sm placeholder-[#94A3B8] outline-none focus:bg-white focus:ring-2 focus:ring-[#6366F1]/30 transition-all disabled:opacity-60"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isTyping || showWizard}
-            className="w-10 h-10 rounded-full bg-[#6366F1] hover:bg-[#4F46E5] text-white flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          {/* Quick Reply Chips */}
+          {quickReplies.length > 0 && !showGuestBlur && (
+            <div className="px-4 py-2.5 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0">
+              {quickReplies.map((chip) => (
+                <button
+                  key={chip}
+                  onClick={() => handleQuickReply(chip)}
+                  disabled={isTyping}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-full border border-[#E2E8F0] bg-white text-[#374151] text-xs font-medium hover:border-[#6366F1] hover:text-[#6366F1] hover:bg-[#EEF2FF] transition-all disabled:opacity-40"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2.5 px-4 py-3 bg-white border-t border-[#E2E8F0] flex-shrink-0">
+            <button className="text-[#94A3B8] hover:text-[#6366F1] transition-colors flex-shrink-0">
+              <Mic className="w-5 h-5" />
+            </button>
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="Type your answer..."
+              disabled={isTyping || showWizard || !!showGuestBlur}
+              className="flex-1 px-4 py-2.5 rounded-full bg-[#F1F5F9] text-[#0F172A] text-sm placeholder-[#94A3B8] outline-none focus:bg-white focus:ring-2 focus:ring-[#6366F1]/30 transition-all disabled:opacity-60"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isTyping || showWizard || !!showGuestBlur}
+              className="w-10 h-10 rounded-full bg-[#6366F1] hover:bg-[#4F46E5] text-white flex items-center justify-center flex-shrink-0 transition-colors disabled:opacity-40"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -148,6 +274,15 @@ export function ChatScreen() {
           }}
         />
       </div>
+
+      {/* ── Auth Modal ────────────────────────────────────── */}
+      {authOpen && (
+        <AuthModal
+          initialTab={authTab}
+          onClose={() => setAuthOpen(false)}
+          onEnterApp={() => setAuthOpen(false)}
+        />
+      )}
     </div>
   );
 }
