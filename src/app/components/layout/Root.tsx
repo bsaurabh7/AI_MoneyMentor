@@ -11,10 +11,13 @@ import {
   X,
   MessageCircle,
   LogOut,
+  Lock,
+  User,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DisclaimerBanner } from '../shared/DisclaimerBanner';
 import { useAuth } from '../../context/AuthContext';
+import { AuthModal } from '../auth/AuthModal';
 
 const navItems = [
   { path: '/chat', label: 'AI Chat', icon: MessageCircle },
@@ -22,6 +25,7 @@ const navItems = [
   { path: '/fire', label: 'FIRE Planner', icon: Flame },
   { path: '/health', label: 'Money Health', icon: Heart },
   { path: '/portfolio', label: 'Portfolio X-Ray', icon: BarChart3 },
+  { path: '/profile', label: 'My Profile', icon: User },
 ];
 
 const pageTitles: Record<string, string> = {
@@ -40,9 +44,17 @@ export function Root() {
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const isChat = location.pathname === '/chat';
   const pageTitle = pageTitles[location.pathname] ?? 'Arthmize';
+
+  // Listen for context-menu auth triggers
+  useEffect(() => {
+    const handleOpenAuth = () => setAuthOpen(true);
+    document.addEventListener('az:open-auth-modal', handleOpenAuth);
+    return () => document.removeEventListener('az:open-auth-modal', handleOpenAuth);
+  }, []);
 
   /* Derive display name: profile > user metadata > email prefix */
   const displayName =
@@ -95,27 +107,46 @@ export function Root() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 space-y-1 mt-1">
-          {navItems.map(({ path, label, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 h-12 rounded-xl text-sm font-medium transition-all duration-150 ${
-                  isActive
-                    ? 'bg-white text-[#0F172A]'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-white/10'
-                }`
-              }
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {label}
-              {path === '/chat' && (
-                <span className="ml-auto bg-[#6366F1] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                  NEW
-                </span>
-              )}
-            </NavLink>
-          ))}
+          {navItems.map(({ path, label, icon: Icon }) => {
+            const isLocked = !user && path !== '/chat';
+            if (isLocked) {
+              return (
+                <button
+                  key={path}
+                  onClick={() => setAuthOpen(true)}
+                  className="w-full flex items-center gap-3 px-4 h-12 rounded-xl text-sm font-medium transition-all text-[#64748B] hover:text-[#94A3B8] hover:bg-white/5 cursor-not-allowed justify-between"
+                  title="Login to access"
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-4 h-4 flex-shrink-0 opacity-50" />
+                    <span className="opacity-70">{label}</span>
+                  </div>
+                  <Lock className="w-3.5 h-3.5 opacity-40 flex-shrink-0" />
+                </button>
+              );
+            }
+            return (
+              <NavLink
+                key={path}
+                to={path}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 h-12 rounded-xl text-sm font-medium transition-all duration-150 ${
+                    isActive
+                      ? 'bg-white text-[#0F172A]'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-white/10'
+                  }`
+                }
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                {label}
+                {path === '/chat' && (
+                  <span className="ml-auto bg-[#6366F1] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    NEW
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Bottom */}
@@ -157,21 +188,39 @@ export function Root() {
               <span className="text-[#94A3B8] text-sm">Hello, {displayName.split(' ')[0]}</span>
             </div>
             <nav className="flex-1 px-3 space-y-1 mt-1">
-              {navItems.map(({ path, label, icon: Icon }) => (
-                <NavLink
-                  key={path}
-                  to={path}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 h-12 rounded-xl text-sm font-medium transition-all ${
-                      isActive ? 'bg-white text-[#0F172A]' : 'text-[#94A3B8] hover:text-white hover:bg-white/10'
-                    }`
-                  }
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  {label}
-                </NavLink>
-              ))}
+              {navItems.map(({ path, label, icon: Icon }) => {
+                const isLocked = !user && path !== '/chat';
+                if (isLocked) {
+                  return (
+                    <button
+                      key={path}
+                      onClick={() => { setMobileOpen(false); setAuthOpen(true); }}
+                      className="w-full flex items-center gap-3 px-4 h-12 rounded-xl text-sm font-medium transition-all text-[#64748B] justify-between text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="w-4 h-4 flex-shrink-0 opacity-50" />
+                        <span className="opacity-70">{label}</span>
+                      </div>
+                      <Lock className="w-3.5 h-3.5 opacity-40 flex-shrink-0" />
+                    </button>
+                  );
+                }
+                return (
+                  <NavLink
+                    key={path}
+                    to={path}
+                    onClick={() => setMobileOpen(false)}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-4 h-12 rounded-xl text-sm font-medium transition-all ${
+                        isActive ? 'bg-white text-[#0F172A]' : 'text-[#94A3B8] hover:text-white hover:bg-white/10'
+                      }`
+                    }
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    {label}
+                  </NavLink>
+                );
+              })}
             </nav>
           </aside>
         </div>
@@ -228,22 +277,42 @@ export function Root() {
         style={{ height: MOBILE_NAV_H }}
       >
         <div className="flex h-full">
-          {navItems.map(({ path, label, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) =>
-                `flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                  isActive ? 'text-[#6366F1]' : 'text-[#94A3B8]'
-                }`
-              }
-            >
-              <Icon className="w-5 h-5" />
-              <span className="text-[9px] leading-none font-medium">{label.split(' ')[0]}</span>
-            </NavLink>
-          ))}
+          {navItems.map(({ path, label, icon: Icon }) => {
+            const isLocked = !user && path !== '/chat';
+            if (isLocked) {
+              return (
+                <button
+                  key={path}
+                  onClick={() => setAuthOpen(true)}
+                  className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors text-[#94A3B8]/50"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span className="text-[9px] leading-none font-medium text-opacity-70">{label.split(' ')[0]}</span>
+                </button>
+              );
+            }
+            return (
+              <NavLink
+                key={path}
+                to={path}
+                className={({ isActive }) =>
+                  `flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                    isActive ? 'text-[#6366F1]' : 'text-[#94A3B8]'
+                  }`
+                }
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-[9px] leading-none font-medium">{label.split(' ')[0]}</span>
+              </NavLink>
+            );
+          })}
         </div>
       </nav>
+
+      {/* ── AUTH MODAL ── */}
+      {authOpen && (
+        <AuthModal initialTab="login" onClose={() => setAuthOpen(false)} onEnterApp={() => setAuthOpen(false)} />
+      )}
     </div>
   );
 }
