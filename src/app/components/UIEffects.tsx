@@ -4,15 +4,20 @@
  * Feature flags at the top — flip any to false to kill that effect.
  * Mounts once, cleans up all listeners on unmount.
  * Auto-disables custom cursor on touch/mobile devices.
+ *
+ * Auth-awareness: reads auth state via useAuth() and publishes
+ * 'az:open-auth-modal' custom event to request login modal.
  */
 import { useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router';
 
 const FEATURES = {
   CUSTOM_CURSOR:      true,   // Glossy indigo cursor + glow trail
   CUSTOM_RIGHT_CLICK: true,   // Branded dark context menu
   TEXT_SELECT_EFFECT: true,   // Copy/share/search toolbar on selection
   LINK_HOVER_EFFECT:  true,   // Magnetic pull on buttons & links
-  INSPECT_DISABLE:    false,   // Block DevTools & inspect element
+  INSPECT_DISABLE:    false,  // Block DevTools & inspect element
 };
 
 const C = {
@@ -110,6 +115,49 @@ function injectStyles() {
     .az-menu-item.danger:hover { background: rgba(239,68,68,.15); color: #FCA5A5; }
     .az-menu-item.primary-item { color: ${C.primary}; }
     .az-menu-item.primary-item:hover { background: rgba(99,102,241,.2); color: #A5B4FC; }
+    .az-menu-item.locked { color: rgba(255,255,255,.3); cursor: not-allowed; }
+    .az-menu-item.locked:hover { background: transparent; color: rgba(255,255,255,.3); }
+    .az-menu-item.locked .az-lock-badge {
+      margin-left: auto;
+      font-size: 10px; padding: 1px 6px; border-radius: 4px;
+      background: rgba(99,102,241,.2); color: #A5B4FC;
+    }
+
+    /* ── In-page search bar ── */
+    #az-search-bar {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 999998; background: ${C.navyLight};
+      border: 1px solid rgba(99,102,241,.4); border-radius: 12px;
+      padding: 10px 14px; display: flex; align-items: center; gap-8px;
+      gap: 10px; min-width: 340px; max-width: 90vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+      transform: translateX(-50%) translateY(-8px);
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    #az-search-bar.visible {
+      opacity: 1; pointer-events: all;
+      transform: translateX(-50%) translateY(0);
+    }
+    #az-search-input {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: #fff; font-size: 14px; font-family: 'Inter', system-ui, sans-serif;
+    }
+    #az-search-input::placeholder { color: rgba(255,255,255,.35); }
+    #az-search-count {
+      font-size: 12px; color: rgba(255,255,255,.4); white-space: nowrap;
+    }
+    #az-search-close {
+      background: none; border: none; color: rgba(255,255,255,.4);
+      cursor: pointer; padding: 2px; font-size: 16px; line-height: 1;
+    }
+    #az-search-close:hover { color: #fff; }
+    .az-search-highlight {
+      background: rgba(99,102,241,.4) !important;
+      border-radius: 2px;
+      outline: 2px solid #6366F1;
+    }
 
     /* ── Text selection ── */
     ::selection     { background: rgba(99,102,241,.25) !important; color: ${C.white} !important; }
@@ -151,14 +199,93 @@ function injectStyles() {
     #az-copy-flash.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* ── Magnetic links ── */
-    .az-magnetic { /* display: inline-block; */ transition: transform .25s cubic-bezier(.23,1,.32,1); }
+    .az-magnetic { transition: transform .25s cubic-bezier(.23,1,.32,1); }
   `;
   document.head.appendChild(style);
 }
 
+// ── In-page search engine ──────────────────────────────────────────────────
+let searchMatches: HTMLElement[] = [];
+let searchIndex = 0;
+
+function clearSearchHighlights() {
+  document.querySelectorAll('.az-search-highlight').forEach(el => {
+    const parent = el.parentNode;
+    if (parent) {
+      parent.replaceChild(document.createTextNode(el.textContent ?? ''), el);
+      parent.normalize();
+    }
+  });
+  searchMatches = [];
+  searchIndex = 0;
+}
+
+function runSearch(term: string): number {
+  clearSearchHighlights();
+  if (!term || term.length < 2) return 0;
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (['SCRIPT','STYLE','NOSCRIPT','#az-search-bar','#az-ctx-menu'].some(t => parent.closest(t))) return NodeFilter.FILTER_REJECT;
+      return node.textContent?.toLowerCase().includes(term.toLowerCase())
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  const nodes: Text[] = [];
+  let node;
+  while ((node = walker.nextNode())) nodes.push(node as Text);
+
+  nodes.forEach(textNode => {
+    const text = textNode.textContent ?? '';
+    const lower = text.toLowerCase();
+    const termLower = term.toLowerCase();
+    let idx = lower.indexOf(termLower);
+    if (idx < 0) return;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    while (idx >= 0) {
+      frag.appendChild(document.createTextNode(text.slice(last, idx)));
+      const mark = document.createElement('mark');
+      mark.className = 'az-search-highlight';
+      mark.textContent = text.slice(idx, idx + term.length);
+      searchMatches.push(mark);
+      frag.appendChild(mark);
+      last = idx + term.length;
+      idx = lower.indexOf(termLower, last);
+    }
+    frag.appendChild(document.createTextNode(text.slice(last)));
+    textNode.parentNode?.replaceChild(frag, textNode);
+  });
+
+  if (searchMatches.length > 0) {
+    searchMatches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  return searchMatches.length;
+}
+
+function navigateSearch(dir: 1 | -1, countEl: HTMLElement) {
+  if (searchMatches.length === 0) return;
+  searchMatches[searchIndex]?.classList.remove('az-search-highlight');
+  searchMatches[searchIndex]?.style && (searchMatches[searchIndex].style.outline = '2px solid #6366F1');
+  searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
+  const cur = searchMatches[searchIndex];
+  if (cur) {
+    cur.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    cur.style.outline = '3px solid #F59E0B';
+  }
+  countEl.textContent = `${searchIndex + 1} / ${searchMatches.length}`;
+}
+
 export function UIEffects() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isLoggedIn = !!user;
+
   useEffect(() => {
-    // Skip on SSR / no DOM
     if (typeof window === 'undefined') return;
 
     const isTouchOnly = window.matchMedia('(hover: none)').matches;
@@ -250,6 +377,9 @@ export function UIEffects() {
        2. BRANDED RIGHT-CLICK CONTEXT MENU
     ───────────────────────────────────────────── */
     if (FEATURES.CUSTOM_RIGHT_CLICK) {
+      // Helper to request auth modal from any component listening
+      const requestAuth = () => document.dispatchEvent(new CustomEvent('az:open-auth-modal'));
+
       const menu = document.createElement('div');
       menu.id = 'az-ctx-menu';
       menu.innerHTML = `
@@ -273,20 +403,20 @@ export function UIEffects() {
           <svg class="az-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
-          Search on page <span class="az-shortcut">⌘F</span>
+          Search on page <span class="az-shortcut">Ctrl+F</span>
         </div>
         <div class="az-menu-divider"></div>
-        <div class="az-menu-item" data-action="tax">
+        <div class="az-menu-item ${isLoggedIn ? '' : 'locked'}" data-action="tax">
           <svg class="az-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
           </svg>
-          Tax Optimizer
+          Tax Optimizer ${!isLoggedIn ? '<span class="az-lock-badge">🔒 Login</span>' : ''}
         </div>
-        <div class="az-menu-item" data-action="fire">
+        <div class="az-menu-item ${isLoggedIn ? '' : 'locked'}" data-action="fire">
           <svg class="az-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
           </svg>
-          FIRE Planner
+          FIRE Planner ${!isLoggedIn ? '<span class="az-lock-badge">🔒 Login</span>' : ''}
         </div>
         <div class="az-menu-divider"></div>
         <div class="az-menu-item" data-action="reload">
@@ -319,7 +449,12 @@ export function UIEffects() {
       const onCtx = (e: MouseEvent) => { e.preventDefault(); showMenu(e.clientX, e.clientY); };
       const onClickOutside = () => hideMenu();
       const onKeydown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') hideMenu();
+        if (e.key === 'Escape') { hideMenu(); closeSearch(); }
+        // Ctrl+F / Cmd+F → open in-page search
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+          e.preventDefault();
+          openSearch();
+        }
         if (FEATURES.INSPECT_DISABLE) {
           if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && ['I','J','C'].includes(e.key)) || (e.ctrlKey && e.key === 'u')) {
             e.preventDefault();
@@ -327,17 +462,24 @@ export function UIEffects() {
           }
         }
       };
+
       const onMenuClick = (e: MouseEvent) => {
         const item = (e.target as Element).closest<HTMLElement>('.az-menu-item');
         if (!item) return;
         hideMenu();
         switch (item.dataset.action) {
-          case 'home':          window.location.href = '/'; break;
-          case 'copy':          document.execCommand('copy'); showCopyFlash('Copied!'); break;
-          case 'search':        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true })); break;
-          case 'tax':           window.location.href = '/tax'; break;
-          case 'fire':          window.location.href = '/fire'; break;
-          case 'reload':        window.location.reload(); break;
+          case 'home':  navigate('/'); break;
+          case 'copy':  document.execCommand('copy'); showCopyFlash('Copied!'); break;
+          case 'search': openSearch(); break;
+          case 'tax':
+            if (isLoggedIn) navigate('/tax');
+            else { requestAuth(); showCopyFlash('Please log in to access Tax Optimizer', false); }
+            break;
+          case 'fire':
+            if (isLoggedIn) navigate('/fire');
+            else { requestAuth(); showCopyFlash('Please log in to access FIRE Planner', false); }
+            break;
+          case 'reload': window.location.reload(); break;
           case 'inspect-block': showCopyFlash('DevTools disabled on this page', false); break;
         }
       };
@@ -356,7 +498,56 @@ export function UIEffects() {
     }
 
     /* ─────────────────────────────────────────────
-       3. TEXT SELECTION MINI-TOOLBAR
+       3. IN-PAGE SEARCH BAR
+    ───────────────────────────────────────────── */
+    const searchBar = document.createElement('div');
+    searchBar.id = 'az-search-bar';
+    searchBar.innerHTML = `
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,.5)" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <input id="az-search-input" type="text" placeholder="Search on this page…" autocomplete="off" />
+      <span id="az-search-count"></span>
+      <button id="az-search-prev" style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;padding:2px 4px;font-size:14px">▲</button>
+      <button id="az-search-next" style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;padding:2px 4px;font-size:14px">▼</button>
+      <button id="az-search-close">✕</button>
+    `;
+    document.body.appendChild(searchBar);
+
+    const searchInput = searchBar.querySelector<HTMLInputElement>('#az-search-input')!;
+    const searchCount = searchBar.querySelector<HTMLElement>('#az-search-count')!;
+
+    const openSearch = () => {
+      searchBar.classList.add('visible');
+      searchInput.focus();
+      searchInput.select();
+    };
+    const closeSearch = () => {
+      searchBar.classList.remove('visible');
+      clearSearchHighlights();
+      searchInput.value = '';
+      searchCount.textContent = '';
+    };
+
+    searchInput.addEventListener('input', () => {
+      const count = runSearch(searchInput.value);
+      searchCount.textContent = count > 0 ? `${Math.min(searchIndex + 1, count)} / ${count}` : (searchInput.value.length >= 2 ? '0 results' : '');
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        navigateSearch(e.shiftKey ? -1 : 1, searchCount);
+      }
+      if (e.key === 'Escape') closeSearch();
+    });
+    searchBar.querySelector('#az-search-prev')?.addEventListener('click', () => navigateSearch(-1, searchCount));
+    searchBar.querySelector('#az-search-next')?.addEventListener('click', () => navigateSearch(1, searchCount));
+    searchBar.querySelector('#az-search-close')?.addEventListener('click', closeSearch);
+
+    cleanups.push(() => { searchBar.remove(); clearSearchHighlights(); });
+
+    /* ─────────────────────────────────────────────
+       4. TEXT SELECTION MINI-TOOLBAR
     ───────────────────────────────────────────── */
     if (FEATURES.TEXT_SELECT_EFFECT) {
       const toast = document.createElement('div');
@@ -415,7 +606,10 @@ export function UIEffects() {
             else { navigator.clipboard.writeText(`${text} — ${window.location.href}`); showCopyFlash('Link + text copied!'); }
             break;
           case 'search':
-            window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank');
+            openSearch();
+            searchInput.value = text.slice(0, 60);
+            const count = runSearch(searchInput.value);
+            searchCount.textContent = count > 0 ? `1 / ${count}` : '0 results';
             break;
         }
         toast.classList.remove('visible');
@@ -433,7 +627,7 @@ export function UIEffects() {
     }
 
     /* ─────────────────────────────────────────────
-       4. MAGNETIC LINK/BUTTON HOVER
+       5. MAGNETIC LINK/BUTTON HOVER
     ───────────────────────────────────────────── */
     if (FEATURES.LINK_HOVER_EFFECT && !isTouchOnly) {
       const applyMagnetic = () => {
@@ -452,7 +646,6 @@ export function UIEffects() {
       };
       applyMagnetic();
 
-      // Re-apply after SPA navigations
       const origPush = history.pushState.bind(history);
       history.pushState = (...args) => { origPush(...args); setTimeout(applyMagnetic, 350); };
     }
@@ -467,12 +660,12 @@ export function UIEffects() {
     );
 
     return () => { cleanups.forEach(fn => fn()); };
-  }, []);
+  }, [isLoggedIn, navigate]);  // Re-run when auth state changes to update context menu
 
-  return null; // Pure side-effect component
+  return null;
 }
 
-/* ── Shared flash notification (global, called from context menu too) ── */
+/* ── Shared flash notification ── */
 let flashTimer: ReturnType<typeof setTimeout>;
 function showCopyFlash(message: string, isSuccess = true) {
   let flash = document.getElementById('az-copy-flash') as HTMLDivElement | null;
