@@ -157,21 +157,50 @@ const QUICK_REPLIES: Record<ConversationStep, string[]> = {
 export function useChatBot(initialData?: CollectedData) {
   const { user } = useAuth();
   const hasWizardData = !!initialData?.income?.base_salary;
+  
+  // Calculate initial progress to see if profile is fully loaded from DB
+  let initialScore = 0;
+  if (initialData) {
+    const d = initialData;
+    if (d.income?.base_salary) initialScore += 10;
+    if (d.demographics?.city_type) initialScore += 5;
+    if (d.income?.hra_received !== undefined) initialScore += 5;
+    if (d.expenses?.rent_paid_monthly !== undefined) initialScore += 5;
+    if (d.assets?.deduction_80c !== undefined) initialScore += 5;
+    if (d.assets?.deduction_80d !== undefined) initialScore += 5;
+    if (d.assets?.nps_80ccd !== undefined) initialScore += 5;
+    if (d.demographics?.age) initialScore += 5;
+    if (d.demographics?.employment_type) initialScore += 5;
+    if (d.demographics?.marital_status) initialScore += 5;
+    if (d.income?.secondary_income_monthly !== undefined) initialScore += 5;
+    if (d.income?.passive_income_monthly !== undefined) initialScore += 5;
+    if (d.assets?.has_term_insurance !== undefined) initialScore += 5;
+    if (d.assets?.monthly_sip !== undefined) initialScore += 5;
+    if (d.assets?.total_investments !== undefined) initialScore += 5;
+    if (d.liabilities?.home_loan_emi !== undefined) initialScore += 5;
+    if (d.liabilities?.credit_card_debt !== undefined) initialScore += 5;
+    if (d.assets?.emergency_months) initialScore += 5;
+  }
+  const isProfileComplete = initialScore >= 95;
 
-  // Opening message depends on whether wizard gave us data
-  const openingMsg = hasWizardData
-    ? `Great! I've got your profile details 👋\n\nRunning your **Tax Analysis** now — calculating Old Regime vs New Regime for your ₹${((initialData!.income!.base_salary ?? 0) / 100_000).toFixed(1)}L salary... 🧮`
-    : "Hi! I'm FinPilot 👋 I'll help you optimize your taxes, plan retirement, and build your Money Health Score.\n\nWhat's your **annual salary (CTC)**? (e.g. \"18 lakhs\" or \"18L\")";
+  const openingMsg = isProfileComplete
+    ? `Welcome back! I've loaded your full profile from the database 📊\n\nYour **Tax, FIRE & Money Health reports** have been generated in the sidebar. What would you like to analyze or explore today?`
+    : hasWizardData
+      ? `Great! I've got your profile details 👋\n\nRunning your **Tax Analysis** now — calculating Old Regime vs New Regime for your ₹${((initialData!.income!.base_salary ?? 0) / 100_000).toFixed(1)}L salary... 🧮`
+      : "Hi! I'm FinPilot 👋 I'll help you optimize your taxes, plan retirement, and build your Money Health Score.\n\nWhat's your **annual salary (CTC)**? (e.g. \"18 lakhs\" or \"18L\")";
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: uid(), role: 'bot', type: 'text', content: openingMsg },
   ]);
 
-  const [step, setStep] = useState<ConversationStep>(hasWizardData ? 'tax_computing' : 'salary');
+  const [step, setStep] = useState<ConversationStep>(
+    isProfileComplete ? 'done' : hasWizardData ? 'tax_computing' : 'salary'
+  );
   const [collected, setCollected] = useState<CollectedData>(initialData ?? {});
   const [taxResult, setTaxResult] = useState<TaxResponse | null>(null);
   const [fireResult, setFireResult] = useState<FireResponse | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [sessionId] = useState(() => uid());
 
   // Refs must be declared before use
   const hasTriggeredRef = useRef(false);
@@ -911,9 +940,49 @@ export function useChatBot(initialData?: CollectedData) {
               await addBotMessage("Please enter a retirement age higher than your current age!");
             }
           } else {
-            await addBotMessage(
-              "I've shared your complete analysis above! 📊\n\nUse the **sidebar tools** for deeper dives — Tax Optimizer, FIRE Planner, Money Health Score, or Portfolio X-Ray. Or say **\"start over\"** to begin fresh!"
-            );
+            // ── Connect to Python FastAPI V3 Agent ──
+            try {
+              const typingId = uid();
+              typingIdRef.current = typingId;
+              setIsTyping(true);
+              setMessages(prev => [...prev, { id: typingId, role: 'bot', type: 'typing' }]);
+
+              // Prepare history
+              const history = messages
+                .filter(m => m.role === 'user' || (m.role === 'bot' && m.type === 'text'))
+                .map(m => ({ role: m.role, content: 'content' in m ? m.content : '' }));
+              history.push({ role: 'user', content: userText.trim() });
+
+              const aiContext = {
+                ...newData,
+                user_email: user?.email,
+                user_name: user?.user_metadata?.full_name || 'User',
+              };
+
+              const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sessionId,
+                  message: userText.trim(),
+                  context: aiContext,
+                  messageHistory: history.slice(-15) // Keep last 15 messages
+                })
+              });
+
+              setMessages(prev => prev.filter(m => m.id !== typingId));
+              setIsTyping(false);
+
+              if (!response.ok) throw new Error('API Error');
+              const data = await response.json();
+              await addBotMessage(data.text || "Sorry, I couldn't generate a response for that.", 0);
+
+            } catch (err) {
+              console.error('Chat API Error:', err);
+              setMessages(prev => prev.filter(m => m.id !== typingIdRef.current));
+              setIsTyping(false);
+              await addBotMessage("I'm having trouble connecting to my Python brain. Make sure the FastAPI server is running (`npm run dev:backend`)!", 0);
+            }
           }
           break;
         }
