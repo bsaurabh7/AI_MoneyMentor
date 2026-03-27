@@ -1,6 +1,6 @@
 import { CheckCircle, Circle } from 'lucide-react';
 import { type TaxResponse, type FireResponse, formatINR, formatCr } from '../../utils/finCalc';
-import { type CollectedData } from '../../hooks/useChatBot';
+import { type CollectedData, getSalary, getHRA, get80C, getNPS, getCurrentAge } from '../../hooks/useCollectedData';
 
 interface Props {
   collected: CollectedData;
@@ -10,21 +10,25 @@ interface Props {
   onStartFire?: () => void;
 }
 
-interface Pill {
-  key: keyof CollectedData;
+interface PillDef {
   label: string;
+  getValue: (c: CollectedData) => number | string | undefined;
   format: (v: any) => string;
 }
 
-const PILLS: Pill[] = [
-  { key: 'salary', label: 'Salary', format: (v) => `₹${(v / 100000).toFixed(1)}L` },
-  { key: 'hra_received', label: 'HRA', format: (v) => `₹${(v / 100000).toFixed(1)}L` },
-  { key: 'deduction_80c', label: '80C', format: (v) => `₹${(v / 100000).toFixed(1)}L` },
-  { key: 'nps_80ccd', label: 'NPS', format: (v) => `₹${(v / 1000).toFixed(0)}K` },
-  { key: 'current_age', label: 'Age', format: (v) => `${v} yrs` },
-  { key: 'retire_age', label: 'Retire at', format: (v) => `${v}` },
-  { key: 'monthly_expense', label: 'Expenses', format: (v) => `₹${(v / 1000).toFixed(0)}K/mo` },
-  { key: 'current_savings', label: 'Savings', format: (v) => formatCr(v) },
+const PILLS: PillDef[] = [
+  { label: 'Salary',     getValue: (c) => c.income?.base_salary,           format: (v) => `₹${(v / 100000).toFixed(1)}L` },
+  { label: 'HRA',        getValue: (c) => c.income?.hra_received,           format: (v) => `₹${(v / 100000).toFixed(1)}L` },
+  { label: '80C',        getValue: (c) => c.assets?.deduction_80c,          format: (v) => `₹${(v / 100000).toFixed(1)}L` },
+  { label: 'NPS',        getValue: (c) => c.assets?.nps_80ccd,              format: (v) => `₹${(v / 1000).toFixed(0)}K` },
+  { label: 'Age',        getValue: (c) => c.demographics?.age,              format: (v) => `${v} yrs` },
+  { label: 'City',       getValue: (c) => c.demographics?.city_type,        format: (v) => v },
+  { label: 'Expenses',   getValue: (c) => c.expenses?.fixed_monthly,        format: (v) => `₹${(v / 1000).toFixed(0)}K/mo` },
+  { label: 'Rent',       getValue: (c) => c.expenses?.rent_paid_monthly,    format: (v) => v === 0 ? 'Own home' : `₹${(v / 1000).toFixed(0)}K/mo` },
+  { label: 'Insurance',  getValue: (c) => c.expenses?.health_insurance_premium, format: (v) => `₹${(v / 1000).toFixed(0)}K/yr` },
+  { label: 'Home Loan',  getValue: (c) => c.liabilities?.home_loan_emi,    format: (v) => v === 0 ? 'None' : `₹${(v / 1000).toFixed(0)}K/mo` },
+  { label: 'CC Debt',    getValue: (c) => c.liabilities?.credit_card_debt,  format: (v) => v === 0 ? 'None' : formatINR(v) },
+  { label: 'EM Fund',    getValue: (c) => c.assets?.emergency_fund,         format: (v) => formatCr(v) },
 ];
 
 export function SummaryPanel({ collected, taxResult, fireResult, progress, onStartFire }: Props) {
@@ -65,15 +69,12 @@ export function SummaryPanel({ collected, taxResult, fireResult, progress, onSta
             Profile so far
           </h3>
           <div className="flex flex-wrap gap-2">
-            {PILLS.map(({ key, label, format }) => {
-              const val = collected[key];
-              const confirmed =
-                val !== undefined &&
-                val !== null &&
-                (val !== 0 || key === 'nps_80ccd' || key === 'current_savings');
+            {PILLS.map(({ label, getValue, format }) => {
+              const val = getValue(collected);
+              const confirmed = val !== undefined && val !== null;
               return (
                 <div
-                  key={key}
+                  key={label}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all ${
                     confirmed
                       ? 'bg-[#D1FAE5] border-[#6EE7B7] text-[#065F46]'
@@ -143,7 +144,7 @@ export function SummaryPanel({ collected, taxResult, fireResult, progress, onSta
                 </thead>
                 <tbody className="divide-y divide-[#F8FAFC]">
                   {[
-                    ['Gross Income', formatINR(collected.salary || 0), formatINR(collected.salary || 0)],
+                    ['Gross Income', formatINR(getSalary(collected)), formatINR(getSalary(collected))],
                     ['Deductions', formatINR(taxResult.old_regime.deductions), formatINR(taxResult.new_regime.deductions)],
                     ['Taxable Income', formatINR(taxResult.old_regime.taxable_income), formatINR(taxResult.new_regime.taxable_income)],
                     ['Tax', formatINR(taxResult.old_regime.tax_before_cess), formatINR(taxResult.new_regime.tax_before_cess)],
