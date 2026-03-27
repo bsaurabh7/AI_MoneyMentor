@@ -42,6 +42,7 @@ interface AuthContextValue {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  profileLoading: boolean;
   signUp: (opts: SignUpOptions) => Promise<AuthResult>;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   sendOtp: (email: string) => Promise<AuthResult>;
@@ -58,18 +59,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   /* ── Load profile from user_profiles table ── */
   const loadProfile = useCallback(async (userId: string) => {
+    setProfileLoading(true);
     try {
       const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('user_id', userId)
-        .single();
-      if (!error && data) setProfile(data as UserProfile);
+        .limit(1);
+      if (!error && data && data.length > 0) {
+        setProfile(data[0] as UserProfile);
+      }
     } catch {
       // profile may not exist yet for new users
+    } finally {
+      setProfileLoading(false);
     }
   }, []);
 
@@ -83,18 +90,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const u = session?.user ?? null;
       setUser(u);
-      if (u) loadProfile(u.id);
-      setLoading(false);
+      if (u) {
+        loadProfile(u.id).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+        setProfileLoading(false);
+      }
     });
 
     // Listen for future changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         const u = session?.user ?? null;
         setUser(u);
-        if (u) await loadProfile(u.id);
-        else setProfile(null);
-        setLoading(false);
+        if (u) {
+          loadProfile(u.id).finally(() => setLoading(false));
+        } else {
+          setProfile(null);
+          setProfileLoading(false);
+          setLoading(false);
+        }
       }
     );
 
@@ -210,6 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       profile,
       loading,
+      profileLoading,
       signUp,
       signIn,
       sendOtp,

@@ -1,80 +1,71 @@
-// ── Comprehensive Financial Profile Data Model ─────────────────────────────
-// All 26+ fields from the blueprint, split into 5 typed sub-objects.
-// Phase 1 (wizard) collects the top fields; Phase 2 (chat) fills the rest.
+// ── Comprehensive Financial Profile Data Model v2.0 ─────────────────────────
+// All fields from the v2.0 blueprint, split into typed sub-objects.
+// Phase 1 (wizard) collects top fields; Phase 2 (chat) fills the rest.
 
 export interface Demographics {
   employment_type?: 'salaried' | 'self-employed' | 'student' | 'unemployed' | 'retired';
   age?: number;
   city_type?: 'metro' | 'non-metro' | 'rural';
   marital_status?: 'single' | 'married';
-  /** If married — is the spouse earning? */
   spouse_earning?: boolean;
-  /** Number of dependent children + parents */
   dependents?: number;
+  target_retirement_age?: number;
 }
 
 export interface IncomeStreams {
-  /** Annual CTC / gross salary or avg monthly business profit × 12 */
   base_salary?: number;
-  /** HRA component from salary slip (annual) */
   hra_received?: number;
-  /** LTA received (annual) */
   lta_received?: number;
-  /** Standard deduction — fixed at ₹50,000 for salaried */
   standard_deduction?: number;
-  /** Spouse annual income (if applicable) */
   spouse_income?: number;
-  /** Freelance / side-hustle monthly average */
   secondary_income_monthly?: number;
-  /** Rental income monthly */
   rental_income_monthly?: number;
-  /** Dividend + FD interest income monthly */
   passive_income_monthly?: number;
-  /** Expected annual income growth % */
   income_growth_pct?: number;
+  epf_monthly?: number;
 }
 
 export interface Expenses {
-  /** Monthly rent paid */
   rent_paid_monthly?: number;
-  /** Fixed monthly: groceries, utilities, school fees */
   fixed_monthly?: number;
-  /** Discretionary: dining, travel, entertainment */
   discretionary_monthly?: number;
-  /** Annual health insurance premium (→ 80D deduction) */
   health_insurance_premium?: number;
-  /** Annual term/life insurance premium */
   life_insurance_premium?: number;
 }
 
 export interface Assets {
-  /** Total 80C investments: EPF + PPF + ELSS + LIC (capped at ₹1.5L) */
   deduction_80c?: number;
-  /** NPS contribution under 80CCD(1B) — extra ₹50K deduction */
   nps_80ccd?: number;
-  /** Standard 80D (health insurance) deduction amount */
   deduction_80d?: number;
-  /** Emergency fund in savings accounts / FDs */
   emergency_fund?: number;
-  /** Mutual funds + stocks + bonds market value */
   mutual_funds_stocks?: number;
-  /** Real estate market value (excl. primary residence) */
   real_estate_value?: number;
-  /** Gold + other physical assets */
   gold_other?: number;
+  current_savings?: number;
+  // v2.0 additions
+  monthly_sip?: number;
+  total_investments?: number;
+  emergency_months?: '<1' | '1-3' | '3-6' | '>6';
+  has_term_insurance?: boolean;
+  has_health_insurance?: boolean;
+  tax_regime_chosen?: boolean;
+  expected_return?: number; // decimal e.g. 0.12 for 12%
 }
 
 export interface Liabilities {
-  /** Total monthly home loan EMI */
   home_loan_emi?: number;
-  /** Interest portion of home loan EMI (annual, → Section 24b, max ₹2L) */
   home_loan_interest_annual?: number;
-  /** Monthly car loan EMI */
   car_loan_emi?: number;
-  /** Total credit card outstanding balance */
   credit_card_debt?: number;
-  /** Personal loan + other EMIs per month */
   other_emis_monthly?: number;
+}
+
+/** A mutual fund in the portfolio */
+export interface PortfolioFund {
+  name: string;
+  amount_invested: number;
+  current_value: number;
+  category: 'large_cap' | 'mid_cap' | 'small_cap' | 'flexi_cap' | 'elss' | 'debt' | 'international';
 }
 
 /** Root collected data object — all fields optional (progressive filling) */
@@ -84,6 +75,7 @@ export interface CollectedData {
   expenses?: Expenses;
   assets?: Assets;
   liabilities?: Liabilities;
+  portfolio?: PortfolioFund[];
 }
 
 // ── Convenience flat getters ───────────────────────────────────────────────
@@ -109,7 +101,7 @@ export function get80C(d: CollectedData): number {
 }
 
 export function get80D(d: CollectedData): number {
-  return Math.min(d.assets?.deduction_80d ?? 25_000, 25_000);
+  return Math.min(d.assets?.deduction_80d ?? 0, 25_000);
 }
 
 export function getNPS(d: CollectedData): number {
@@ -142,4 +134,12 @@ export function getTotalDebt(d: CollectedData): number {
     (l.credit_card_debt ?? 0) +
     (l.other_emis_monthly ?? 0) * 12
   );
+}
+
+/** Get expected return as a percentage number (e.g. 12 for 12%) */
+export function getExpectedReturn(d: CollectedData): number {
+  const r = d.assets?.expected_return;
+  if (!r) return 12;
+  // if stored as decimal (0.12), convert to percentage (12)
+  return r <= 1 ? r * 100 : r;
 }

@@ -1,15 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Compass, Calculator, Flame, Heart, BarChart3, ArrowRight, Shield, Zap, CheckCircle, Lock, Ban, Eye, Trash2 } from 'lucide-react';
 import { AuthModal } from '../auth/AuthModal';
+import { useAuth } from '../../context/AuthContext';
 
 export function LandingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
 
   const openLogin = () => { setAuthTab('login'); setAuthOpen(true); };
   const openRegister = () => { setAuthTab('register'); setAuthOpen(true); };
+
+  // Listen for auth-modal triggers from UIEffects (e.g. context menu)
+  useEffect(() => {
+    const handleOpenAuth = () => openLogin();
+    document.addEventListener('az:open-auth-modal', handleOpenAuth);
+    return () => document.removeEventListener('az:open-auth-modal', handleOpenAuth);
+  }, []);
+
+  const handleStartFree = () => navigate('/chat');
+  
+  const handleFeatureClick = (link: string) => {
+    if (user) navigate(link);
+    else openLogin();
+  };
 
   return (
     <div className="min-h-screen" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -99,7 +115,7 @@ export function LandingPage() {
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center gap-4 mb-12">
           <button
-            onClick={() => navigate('/chat')}
+            onClick={handleStartFree}
             className="flex items-center gap-2 text-white font-semibold transition-colors px-6"
             style={{ background: '#6366F1', borderRadius: 10, height: 48, fontSize: 15 }}
             onMouseEnter={e => (e.currentTarget.style.background = '#4F46E5')}
@@ -180,9 +196,14 @@ export function LandingPage() {
             ].map((card) => (
               <div
                 key={card.title}
-                onClick={() => navigate(card.link)}
-                className="bg-white border border-[#E2E8F0] rounded-2xl p-7 cursor-pointer group hover:border-[#6366F1] hover:shadow-md transition-all"
+                onClick={() => handleFeatureClick(card.link)}
+                className="bg-white border border-[#E2E8F0] rounded-2xl p-7 cursor-pointer group hover:border-[#6366F1] hover:shadow-md transition-all relative overflow-hidden"
               >
+                {!user && (
+                  <div className="absolute top-4 right-4 bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> LOGIN REQ
+                  </div>
+                )}
                 <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
                   style={{ background: card.iconBg }}
@@ -253,7 +274,7 @@ export function LandingPage() {
           {/* CTA */}
           <div className="text-center mt-14">
             <button
-              onClick={() => navigate('/chat')}
+              onClick={handleStartFree}
               className="inline-flex items-center gap-2 text-white font-semibold px-8 transition-colors"
               style={{ background: '#6366F1', borderRadius: 10, height: 48, fontSize: 15 }}
               onMouseEnter={e => (e.currentTarget.style.background = '#4F46E5')}
