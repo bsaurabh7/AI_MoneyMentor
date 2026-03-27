@@ -47,7 +47,7 @@ function injectStyles() {
       width: 7px; height: 7px; border-radius: 50%;
       background: ${C.primary}; pointer-events: none;
       z-index: 999999; transform: translate(-50%,-50%);
-      transition: width .15s ease, height .15s ease, background .15s ease, opacity .2s ease;
+      transition: width .05s ease, height .05s ease, background .05s ease, opacity .05s ease;
       will-change: transform;
       box-shadow: 0 0 10px ${C.primaryGlow}, 0 0 20px ${C.primaryGlow};
     }
