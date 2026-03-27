@@ -37,11 +37,25 @@ export type UserProfile = {
   user_id: string;
   full_name: string | null;
   phone: string | null;
-  date_of_birth: string | null;   // ISO date string e.g. "2000-01-15"
+  date_of_birth: string | null;
   city_type: 'metro' | 'non-metro' | null;
+  employment_type: string | null;
+  marital_status: string | null;
   annual_income: number | null;
+  hra_received: number | null;
+  secondary_income_monthly: number | null;
+  passive_income_monthly: number | null;
   monthly_expense: number | null;
+  rent_paid_monthly: number | null;
+  health_insurance_premium: number | null;
   current_savings: number | null;
+  emergency_fund: number | null;
+  deduction_80c: number | null;
+  deduction_80d: number | null;
+  nps_80ccd: number | null;
+  home_loan_emi: number | null;
+  home_loan_interest_annual: number | null;
+  credit_card_debt: number | null;
   risk_profile: 'conservative' | 'moderate' | 'aggressive' | null;
   updated_at: string;
 };
