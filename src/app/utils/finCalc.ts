@@ -178,7 +178,8 @@ export function calculateFIRE(inputs: FireInputs): FireResponse {
 
   let sip_per_month = 0;
   if (r_monthly > 0 && n_months > 0) {
-    sip_per_month = (remaining * r_monthly) / (Math.pow(1 + r_monthly, n_months) - 1);
+    // Annuity Due: SIP at beginning of month
+    sip_per_month = (remaining * r_monthly) / ((Math.pow(1 + r_monthly, n_months) - 1) * (1 + r_monthly));
   } else if (n_months > 0) {
     sip_per_month = remaining / n_months;
   }
@@ -198,7 +199,7 @@ export function calculateFIRE(inputs: FireInputs): FireResponse {
     if (r_monthly > 0) {
       projected =
         current_savings * Math.pow(1 + r_monthly, months) +
-        sip_per_month * ((Math.pow(1 + r_monthly, months) - 1) / r_monthly);
+        sip_per_month * (((Math.pow(1 + r_monthly, months) - 1) / r_monthly) * (1 + r_monthly));
     } else {
       projected = current_savings + sip_per_month * months;
     }
