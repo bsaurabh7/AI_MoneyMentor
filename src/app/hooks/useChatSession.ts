@@ -6,6 +6,9 @@ import type { CollectedData } from './useCollectedData';
  * Debounced auto-save hook for chat sessions.
  * Saves {current_step, collected_data} to Supabase every 2s after a change.
  */
+
+
+
 export function useChatSession(
   userId: string | undefined,
   collected: CollectedData,
