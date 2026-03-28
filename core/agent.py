@@ -101,8 +101,15 @@ async def generate_response(message: str, context: dict, history: list):
 
     # 2. Add current context + message
     full_message = f"""
+[SYSTEM INSTRUCTION OVERRIDE - GENERAL HUB MODE]
+You are currently in the General Agent Hub.
+1. Answer the user's personal finance questions using ONLY the [RUNTIME CONTEXT] below. Do not use dummy data.
+2. Provide generalized, conversational guidance. 
+3. DO NOT perform dramatic, multi-step calculations (like full FIRE planning or deep-dive portfolio x-rays). If they ask for those, politely tell them to use your specialized action buttons (SIP, Insurance, Loans, Expenses) instead.
+
 [RUNTIME CONTEXT]
 {json.dumps(context, indent=2)}
+
 [USER MESSAGE]
 {message}
 """
