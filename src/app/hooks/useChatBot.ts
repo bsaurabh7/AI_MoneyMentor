@@ -7,7 +7,6 @@ import {
 } from './useCollectedData';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { useChatSession, fetchChatSession } from './useChatSession';
 import { getNextUnansweredStep, isStepAnswered } from '../utils/questionSkipper';
 
 // Re-export CollectedData for backwards compat with ChatScreen/SummaryPanel
@@ -184,7 +183,7 @@ export function useChatBot(initialData?: CollectedData) {
     if (d.liabilities?.credit_card_debt !== undefined) initialScore += 5;
     if (d.assets?.emergency_months) initialScore += 5;
   }
-  const isProfileComplete = initialScore >= 95;
+  const isProfileComplete = initialScore >= 90;
 
   const openingMsg = isProfileComplete
     ? `Welcome back! I've loaded your full profile from the database 📊\n\nYour **Tax, FIRE & Money Health reports** have been generated in the sidebar. What would you like to analyze or explore today?`
@@ -196,15 +195,26 @@ export function useChatBot(initialData?: CollectedData) {
     { id: uid(), role: 'bot', type: 'text', content: openingMsg },
   ]);
 
+  const startStep = getNextUnansweredStep('salary', initialData ?? {});
   const [step, setStep] = useState<ConversationStep>(
-    isProfileComplete ? 'done' : hasWizardData ? 'tax_computing' : 'salary'
+    isProfileComplete ? 'done' : startStep
   );
   const [collected, setCollected] = useState<CollectedData>(initialData ?? {});
+  
+  // Persist current collected data in local session automatically
+  useEffect(() => {
+    if (Object.keys(collected).length > 0) {
+      sessionStorage.setItem('finpilot_wizard_data', JSON.stringify(collected));
+    }
+  }, [collected]);
+
   const [taxResult, setTaxResult] = useState<TaxResponse | null>(null);
   const [fireResult, setFireResult] = useState<FireResponse | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId] = useState(() => uid());
-  const sessionRestoredRef = useRef(false);
+  
+  // Pending Agent injection state
+  const [pendingAgent, setPendingAgent] = useState<'sip' | 'insurance' | 'loan' | 'expenses' | null>(null);
 
   // Refs must be declared before use
   const hasTriggeredRef = useRef(false);
@@ -335,36 +345,49 @@ export function useChatBot(initialData?: CollectedData) {
     }
   }, [initialData, runTaxAndAskFire]);
 
-  // ── Restore session from Supabase on mount ────────────────────────────────
+  // ── Incremental Profile Auto-Save (Pillar 8) ─────────────────────────
   useEffect(() => {
-    if (!user || sessionRestoredRef.current || isProfileComplete || hasWizardData) return;
-    sessionRestoredRef.current = true;
-    fetchChatSession(user.id).then((session) => {
-      if (!session) return;
-      const restoredData = session.collected_data as CollectedData;
-      const restoredStep = session.current_step as ConversationStep;
-      setCollected(restoredData);
-      setStep(restoredStep);
-      // Find next unanswered so we never re-ask answered questions
-      const nextStep = getNextUnansweredStep(restoredStep, restoredData);
-      const salary = restoredData.income?.base_salary;
-      const salaryStr = salary ? ` Your salary of ₹${(salary / 100_000).toFixed(1)}L is on file.` : '';
-      setMessages([
-        {
-          id: uid(),
-          role: 'bot',
-          type: 'text',
-          content: `Welcome back! 👋 I've resumed your session.${salaryStr}\n\nLet me pick up from where we left off...`,
-        },
-      ]);
-      if (nextStep !== restoredStep) {
-        setStep(nextStep);
-      }
-    });
-  }, [user, isProfileComplete, hasWizardData]);
+    if (!user || Object.keys(collected).length === 0) return;
+    const timer = setTimeout(() => {
+      // Create a heavily sanitized payload to prevent Supabase 400 errors
+      const sNum = (n: any) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);
+      const sBool = (b: any) => (typeof b === 'boolean' ? b : null);
+      const sStr = (s: any) => (typeof s === 'string' && s.trim() !== '' ? s : null);
+      
+      const payload = {
+        user_id: user.id,
+        annual_income: sNum(getSalary(collected)),
+        hra_received: sNum(getHRA(collected)),
+        secondary_income_monthly: sNum(collected.income?.secondary_income_monthly),
+        passive_income_monthly: sNum(collected.income?.passive_income_monthly),
+        epf_monthly: sNum(collected.income?.epf_monthly),
+        monthly_expense: sNum(getTotalMonthlyExpense(collected)),
+        rent_paid_monthly: sNum(collected.expenses?.rent_paid_monthly),
+        health_insurance_premium: sNum(collected.expenses?.health_insurance_premium),
+        current_savings: sNum(collected.assets?.current_savings),
+        emergency_fund: sNum(collected.assets?.emergency_fund),
+        monthly_sip: sNum(collected.assets?.monthly_sip),
+        total_investments: sNum(collected.assets?.total_investments),
+        deduction_80c: sNum(get80C(collected)),
+        deduction_80d: sNum(get80D(collected)),
+        nps_80ccd: sNum(getNPS(collected)),
+        home_loan_emi: sNum(collected.liabilities?.home_loan_emi),
+        home_loan_interest_annual: sNum(collected.liabilities?.home_loan_interest_annual),
+        credit_card_debt: sNum(collected.liabilities?.credit_card_debt),
+        emergency_months: sStr(collected.assets?.emergency_months), // must match '<1' | '1-3' | etc or be null
+        has_term_insurance: sBool(collected.assets?.has_term_insurance),
+        has_health_insurance: sBool(collected.assets?.has_health_insurance),
+        tax_regime_chosen: sBool(collected.assets?.tax_regime_chosen),
+        updated_at: new Date().toISOString()
+      };
 
-  // ── Auto-save session every 2s (Pillar 1) ────────────────────────────────
-  useChatSession(user?.id, collected, step);
+      supabase.from('user_profiles').upsert(payload, { onConflict: 'user_id' })
+        .then(({ error }) => { 
+          if (error) console.error('[useChatBot] Incremental profile sync error:', error); 
+        });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [user, collected]);
 
   const processStep = useCallback(
     async (userText: string, currentStep: ConversationStep, currentCollected: CollectedData) => {
@@ -617,7 +640,7 @@ export function useChatBot(initialData?: CollectedData) {
 
               supabase.from('user_profiles').upsert({
                 user_id: user.id,
-                date_of_birth: newData.demographics?.age ? new Date(new Date().getFullYear() - newData.demographics.age, 0, 1).toISOString().split('T')[0] : undefined,
+                date_of_birth: newData.demographics?.age ? new Date(new Date().getFullYear() - newData.demographics.age, 0, 1).toISOString().split('T')[0] : null,
                 monthly_expense: fireInputs.monthly_expense,
                 current_savings: fireInputs.current_savings,
                 expected_return: returnRate,
@@ -683,6 +706,12 @@ export function useChatBot(initialData?: CollectedData) {
           const hasTerm = yesNo !== false;
           newData = { ...newData, assets: { ...newData.assets, has_term_insurance: hasTerm } };
           setCollected(newData);
+          if (pendingAgent === 'insurance') {
+            setPendingAgent(null);
+            nextStep = 'done';
+            setTimeout(() => askAgent('insurance', true), 100);
+            break;
+          }
           nextStep = 'p2_insurance';
           await addBotMessage(
             `${hasTerm ? 'Term insurance ✓ — great protection!' : 'Okay, noted.'}\n\nDo you have **health insurance**? What's your annual premium? (Gives you 80D deduction)`
@@ -714,6 +743,12 @@ export function useChatBot(initialData?: CollectedData) {
           if (amount && amount > 0) {
             newData = { ...newData, liabilities: { ...newData.liabilities, home_loan_emi: amount } };
             setCollected(newData);
+            if (pendingAgent === 'loan') {
+               setPendingAgent(null);
+               nextStep = 'done';
+               setTimeout(() => askAgent('loan', true), 100);
+               break;
+            }
             nextStep = 'p2_home_loan_interest';
             await addBotMessage(
               `Home loan EMI ${fmtAmt(amount)}/month ✓\n\n💡 How much of that goes towards **interest per year**? (Interest up to ₹2L qualifies for Section 24b tax deduction!)`
@@ -721,6 +756,12 @@ export function useChatBot(initialData?: CollectedData) {
           } else if (yesNo === false || /no home loan|no loan/.test(userText.toLowerCase())) {
             newData = { ...newData, liabilities: { ...newData.liabilities, home_loan_emi: 0 } };
             setCollected(newData);
+            if (pendingAgent === 'loan') {
+               setPendingAgent(null);
+               nextStep = 'done';
+               setTimeout(() => askAgent('loan', true), 100);
+               break;
+            }
             nextStep = 'p2_credit_card';
             await addBotMessage("No home loan ✓\n\nDo you have any **credit card outstanding balance** or personal loans?");
           } else {
@@ -790,6 +831,12 @@ export function useChatBot(initialData?: CollectedData) {
           const sip = isNone ? 0 : (amount ?? 0);
           newData = { ...newData, assets: { ...newData.assets, monthly_sip: sip } };
           setCollected(newData);
+          if (pendingAgent === 'sip') {
+            setPendingAgent(null);
+            nextStep = 'done';
+            setTimeout(() => askAgent('sip', true), 100);
+            break;
+          }
           nextStep = 'p2_total_investments';
           await addBotMessage(`${sip > 0 ? `${fmtAmt(sip)}/month SIP noted ✓` : 'SIP not started yet — good to plan one!'}\n\nWhat's the **total current value** of all your investments? (Mutual funds, stocks, FDs, gold — rough estimate)`);
           break;
@@ -836,10 +883,10 @@ export function useChatBot(initialData?: CollectedData) {
               home_loan_emi: newData.liabilities?.home_loan_emi ?? 0,
               home_loan_interest_annual: newData.liabilities?.home_loan_interest_annual ?? 0,
               credit_card_debt: newData.liabilities?.credit_card_debt ?? 0,
-              emergency_months: newData.assets?.emergency_months,
+              emergency_months: newData.assets?.emergency_months ?? null,
               has_term_insurance: newData.assets?.has_term_insurance ?? false,
               has_health_insurance: newData.assets?.has_health_insurance ?? false,
-              tax_regime_chosen: chosen,
+              tax_regime_chosen: chosen ?? null,
               updated_at: new Date().toISOString()
             }, { onConflict: 'user_id' })
               .then(({ error: e }) => { if (e) console.error('Final profile upsert err:', e); });
@@ -1044,19 +1091,42 @@ export function useChatBot(initialData?: CollectedData) {
     [isTyping, step, collected, processStep]
   );
 
-  const askAgent = useCallback(async (agentType: 'sip' | 'insurance' | 'loan' | 'expenses') => {
+  const checkAgentDependencies = (agentType: string, c: CollectedData) => {
+    if (agentType === 'sip' && c.assets?.monthly_sip === undefined) return { step: 'p2_sip', msg: "I need to know your current SIPs first 🧐\n\nHow much do you invest via SIPs every month?" };
+    if (agentType === 'insurance' && c.assets?.has_term_insurance === undefined) return { step: 'p2_term_insurance', msg: "Let's check your coverage first 🛡️\n\nDo you already have a term life insurance policy?" };
+    if (agentType === 'loan' && c.liabilities?.home_loan_emi === undefined) return { step: 'p2_home_loan', msg: "To optimize your debt, I need to know your loans 🏠\n\nDo you currently have a home loan? If yes, what's the monthly EMI?" };
+    if (agentType === 'expenses' && c.expenses?.rent_paid_monthly === undefined) return { step: 'rent', msg: "Before analyzing expenses, let's map out your basics 📊\n\nDo you live in a metro city and pay rent? If yes, how much per month?" };
+    return null;
+  };
+
+  const askAgent = useCallback(async (agentType: 'sip' | 'insurance' | 'loan' | 'expenses', autoTriggered = false) => {
     if (isTyping) return;
     
     // Add user message to show intent
-    const intentMessages: Record<string, string> = {
-      sip: "💰 Suggest best SIPs for my budget",
-      insurance: "🛡️ Do I need insurance?",
-      loan: "🏠 Optimize my EMIs",
-      expenses: "📊 Track my monthly expenses",
-    };
-    
-    const userMsg: ChatMessage = { id: uid(), role: 'user', content: intentMessages[agentType] };
-    setMessages(prev => [...prev, userMsg]);
+    if (!autoTriggered) {
+      const intentMessages: Record<string, string> = {
+        sip: "💰 Suggest best SIPs for my budget",
+        insurance: "🛡️ Do I need insurance?",
+        loan: "🏠 Optimize my EMIs",
+        expenses: "📊 Track my monthly expenses",
+      };
+      const userMsg: ChatMessage = { id: uid(), role: 'user', content: intentMessages[agentType] };
+      setMessages(prev => [...prev, userMsg]);
+    }
+
+    const missing = checkAgentDependencies(agentType, collected);
+    if (missing) {
+      setPendingAgent(agentType);
+      setStep(missing.step as ConversationStep);
+      const typingId = uid();
+      setIsTyping(true);
+      setMessages(prev => [...prev, { id: typingId, role: 'bot', type: 'typing' }]);
+      setTimeout(() => {
+        setMessages(prev => prev.filter(m => m.id !== typingId).concat({ id: uid(), role: 'bot', type: 'text', content: missing.msg }));
+        setIsTyping(false);
+      }, 700);
+      return; // Stop here and wait for the user to answer the question!
+    }
     
     const typingId = uid();
     typingIdRef.current = typingId;
@@ -1065,11 +1135,11 @@ export function useChatBot(initialData?: CollectedData) {
     
     try {
       // Map frontend agent types to backend routes
-      const endpointMap = {
+      const endpointMap: Record<string, string> = {
         sip: '/api/agents/sip/recommend',
         insurance: '/api/agents/insurance/recommend',
-        loan: '/api/agents/loan/optimize',
-        expenses: '/api/agents/expense/analyse'
+        loan: '/api/agents/loan/analyse',
+        expenses: '/api/agents/expense/analyse',
       };
       
       const response = await fetch(endpointMap[agentType], {
@@ -1114,26 +1184,39 @@ export function useChatBot(initialData?: CollectedData) {
   const progress = (() => {
     let score = 0;
     const d = collected;
-    if (d.income?.base_salary) score += 10;
-    if (d.demographics?.city_type) score += 5;
-    if (d.income?.hra_received !== undefined) score += 5;
-    if (d.expenses?.rent_paid_monthly !== undefined) score += 5;
-    if (d.assets?.deduction_80c !== undefined) score += 5;
-    if (d.assets?.deduction_80d !== undefined) score += 5;
-    if (d.assets?.nps_80ccd !== undefined) score += 5;
-    if (d.demographics?.age) score += 5;
-    if (d.demographics?.employment_type) score += 5;
-    if (d.demographics?.marital_status) score += 5;
-    if (d.income?.secondary_income_monthly !== undefined) score += 5;
-    if (d.income?.passive_income_monthly !== undefined) score += 5;
-    if (d.assets?.has_term_insurance !== undefined) score += 5;
-    if (d.assets?.monthly_sip !== undefined) score += 5;
-    if (d.assets?.total_investments !== undefined) score += 5;
-    if (d.liabilities?.home_loan_emi !== undefined) score += 5;
-    if (d.liabilities?.credit_card_debt !== undefined) score += 5;
-    if (d.assets?.emergency_months) score += 5;
-    if (d.portfolio && d.portfolio.length > 0) score += 5;
-    return Math.min(score, 100);
+    
+    // Phase 1: Essential Wizard questions (caps at ~75%)
+    let phase1Score = 0;
+    if (d.demographics?.age) phase1Score += 10;
+    if (d.demographics?.city_type) phase1Score += 10;
+    if (d.demographics?.employment_type) phase1Score += 10;
+    if (d.demographics?.marital_status) phase1Score += 10;
+    if (d.income?.base_salary) phase1Score += 15;
+    if (d.income?.hra_received !== undefined) phase1Score += 8;
+    if (d.expenses?.rent_paid_monthly !== undefined) phase1Score += 8;
+    // 80c and NPS are part of Phase 1 too in the wizard
+    if (d.assets?.deduction_80c !== undefined) phase1Score += 4;
+    
+    // Cap Phase 1 score to not exceed 75%
+    score += Math.min(phase1Score, 75);
+    
+    // Phase 2: Advanced Chat questions (makes up the remaining 25%)
+    let phase2Score = 0;
+    if (d.assets?.deduction_80d !== undefined) phase2Score += 3;
+    if (d.assets?.nps_80ccd !== undefined) phase2Score += 4;
+    if (d.income?.secondary_income_monthly !== undefined) phase2Score += 3;
+    if (d.income?.passive_income_monthly !== undefined) phase2Score += 3;
+    if (d.assets?.has_term_insurance !== undefined) phase2Score += 4;
+    if (d.assets?.monthly_sip !== undefined) phase2Score += 3;
+    if (d.assets?.total_investments !== undefined) phase2Score += 2;
+    if (d.liabilities?.home_loan_emi !== undefined) phase2Score += 2;
+    if (d.liabilities?.credit_card_debt !== undefined) phase2Score += 2;
+    if (d.assets?.emergency_months) phase2Score += 4;
+    
+    // Cap phase 2 score
+    score += Math.min(phase2Score, 25);
+    
+    return Math.min(Math.round(score), 100);
   })();
 
   return {

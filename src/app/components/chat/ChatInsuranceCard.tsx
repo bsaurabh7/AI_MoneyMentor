@@ -26,14 +26,18 @@ export function ChatInsuranceCard({ data }: { data: any }) {
       <div className="p-4 flex flex-col gap-3">
         <h4 className="text-xs font-bold text-[#64748B] uppercase tracking-wider mb-1">Top Recommendations</h4>
         {data.recommendations?.map((plan: any, i: number) => (
-          <div key={i} className="bg-white border border-[#E2E8F0] rounded-xl p-3 hover:border-[#16A34A] transition-colors">
+          <div 
+            key={i} 
+            onClick={() => window.open(`https://www.policybazaar.com/search?query=${encodeURIComponent(plan.plan_name)}`, '_blank')}
+            className="bg-white border border-[#E2E8F0] rounded-xl p-3 hover:border-[#16A34A] hover:bg-[#F0FDF4] transition-colors cursor-pointer group relative"
+          >
             <div className="flex justify-between items-start mb-2">
               <div>
                 <div className="flex items-center gap-1.5 mb-1">
                   <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
                   <p className="text-xs text-[#64748B] font-medium">{plan.provider}</p>
                 </div>
-                <p className="font-bold text-[#0F172A]">{plan.plan_name}</p>
+                <p className="font-bold text-[#0F172A] group-hover:text-[#166534] transition-colors">{plan.plan_name} <span className="inline-block opacity-0 group-hover:opacity-100 transition-opacity ml-1">↗</span></p>
               </div>
               <div className="text-right">
                 <p className="text-[#0F172A] font-bold text-sm">{plan.approximate_premium}</p>

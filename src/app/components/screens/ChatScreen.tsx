@@ -19,7 +19,7 @@ import { Loader2 } from 'lucide-react';
 const FREE_KEY = 'fp_free_used';
 
 export function ChatScreen() {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const [input, setInput] = useState('');
   const [wizardData, setWizardData] = useState<CollectedData | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -29,6 +29,7 @@ export function ChatScreen() {
 
   // Magic Data Reset URL param
   useEffect(() => {
+    // ... no changes here
     const params = new URLSearchParams(window.location.search);
     if (params.get('RemoveData') === 'true' && user) {
       Promise.all([
@@ -47,6 +48,20 @@ export function ChatScreen() {
 
   // Populate wizardData from global profile if it exists
   useEffect(() => {
+    // Try to load from session storage first to preserve precise progress state
+    const cached = sessionStorage.getItem('finpilot_wizard_data');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Object.keys(parsed).length > 0 && !wizardData) {
+          setWizardData(parsed);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to parse cached wizard data', e);
+      }
+    }
+
     if (user && profile && profile.annual_income) {
       const p = profile as any;
       const mapped: CollectedData = {
@@ -88,16 +103,14 @@ export function ChatScreen() {
           credit_card_debt: p.credit_card_debt || 0,
         }
       };
-      setWizardData(mapped);
+      // Only set wizardData from profile if we don't already have live wizardData
+      setWizardData(prev => prev || mapped);
     }
   }, [user, profile]);
 
-  // Check if guest has exhausted their free shot
   const [hasUsedFree, setHasUsedFree] = useState(false);
   useEffect(() => {
-    if (!user && localStorage.getItem(FREE_KEY)) {
-      setHasUsedFree(true);
-    }
+    if (!user && localStorage.getItem(FREE_KEY)) setHasUsedFree(true);
   }, [user]);
 
   const showWizard = !authLoading && wizardData === null && !hasUsedFree;
@@ -105,12 +118,8 @@ export function ChatScreen() {
   const { messages, sendMessage, isTyping, step, collected, taxResult, fireResult, progress, quickReplies, askAgent } =
     useChatBot(wizardData ?? undefined);
 
-  // Auto-scroll
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
 
-  // When tax result drops for a guest, mark them as used
   useEffect(() => {
     if (!user && taxResult && !hasUsedFree) {
       localStorage.setItem(FREE_KEY, Date.now().toString());
@@ -120,27 +129,39 @@ export function ChatScreen() {
 
   const showGuestBlur = !user && hasUsedFree && taxResult;
 
-  const handleSend = () => {
-    if (!input.trim() || isTyping) return;
-    sendMessage(input.trim());
-    setInput('');
-    inputRef.current?.focus();
-  };
+  const handleSend = () => { if (!input.trim() || isTyping) return; sendMessage(input.trim()); setInput(''); inputRef.current?.focus(); };
+  const handleKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } };
+  const handleQuickReply = (text: string) => { if (isTyping) return; sendMessage(text); };
 
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleQuickReply = (text: string) => {
-    if (isTyping) return;
-    sendMessage(text);
-  };
-
-  const handleWizardComplete = (data: CollectedData) => {
+  const handleWizardComplete = async (data: CollectedData) => {
     setWizardData(data);
+    if (user) {
+      // Generate a DOY string if age is given to fake date of birth for context, since profile demands Date natively.
+      const dobStr = data.demographics?.age 
+        ? `${new Date().getFullYear() - data.demographics.age}-01-01` 
+        : undefined;
+      
+      try {
+        await supabase.from('user_profiles').upsert({
+          user_id: user.id,
+          date_of_birth: dobStr,
+          city_type: data.demographics?.city_type,
+          employment_type: data.demographics?.employment_type,
+          marital_status: data.demographics?.marital_status,
+          annual_income: data.income?.base_salary,
+          hra_received: data.income?.hra_received,
+          monthly_expense: data.expenses?.fixed_monthly,
+          rent_paid_monthly: data.expenses?.rent_paid_monthly,
+          deduction_80c: data.assets?.deduction_80c,
+          nps_80ccd: data.assets?.nps_80ccd,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        
+        await refreshProfile();
+      } catch (err) {
+        console.error("Popup sync failed", err);
+      }
+    }
   };
 
   return (

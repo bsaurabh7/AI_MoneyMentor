@@ -37,10 +37,14 @@ export function ChatSIPCard({ data }: { data: any }) {
       <div className="p-4 flex flex-col gap-3">
         <h4 className="text-xs font-bold text-[#64748B] uppercase tracking-wider mb-1">Recommended Funds</h4>
         {data.fund_allocations?.map((fund: any, i: number) => (
-          <div key={i} className="bg-white border border-[#E2E8F0] rounded-xl p-3 hover:border-[#6366F1] transition-colors">
+          <div 
+            key={i} 
+            onClick={() => window.open(`https://www.moneycontrol.com/mutual-funds/nav/${fund.fund_name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, '_blank')}
+            className="bg-white border border-[#E2E8F0] rounded-xl p-3 hover:border-[#6366F1] hover:bg-[#EEF2FF] transition-colors cursor-pointer group relative"
+          >
             <div className="flex justify-between items-start mb-2">
               <div>
-                <p className="font-bold text-[#0F172A]">{fund.fund_name}</p>
+                <p className="font-bold text-[#0F172A] group-hover:text-[#4F46E5] transition-colors">{fund.fund_name} <span className="inline-block opacity-0 group-hover:opacity-100 transition-opacity ml-1">↗</span></p>
                 <p className="text-xs text-[#64748B]">{fund.category} • {fund.expense_ratio} ER</p>
               </div>
               <div className="text-right">
@@ -50,7 +54,7 @@ export function ChatSIPCard({ data }: { data: any }) {
             </div>
             
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
-              <div className="bg-[#F8FAFC] px-2 py-1 rounded text-xs font-semibold text-[#334155]">
+              <div className="bg-[#F8FAFC] px-2 py-1 rounded text-xs font-semibold text-[#334155] border border-[#E2E8F0]">
                 {fund.suggested_sip_amount}/mo
               </div>
               <p className="text-xs text-[#64748B] italic flex-1 leading-tight">{fund.rationale}</p>
@@ -61,7 +65,12 @@ export function ChatSIPCard({ data }: { data: any }) {
       
       <div className="bg-[#F8FAFC] px-4 py-3 border-t border-[#E2E8F0] flex items-center justify-between text-xs text-[#64748B]">
         <span>Corpus Target: <strong>{data.fire_corpus_target}</strong></span>
-        <button className="font-medium text-[#4F46E5] hover:underline">Invest Now →</button>
+        <button 
+          onClick={() => window.open('https://coin.zerodha.com/', '_blank')}
+          className="font-medium text-[#4F46E5] hover:underline"
+        >
+          Invest Now →
+        </button>
       </div>
     </div>
   );
