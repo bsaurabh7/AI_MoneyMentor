@@ -7,6 +7,8 @@ import {
 } from './useCollectedData';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useChatSession, fetchChatSession } from './useChatSession';
+import { getNextUnansweredStep, isStepAnswered } from '../utils/questionSkipper';
 
 // Re-export CollectedData for backwards compat with ChatScreen/SummaryPanel
 export type { CollectedData };
@@ -17,7 +19,8 @@ export type ChatMessage =
   | { id: string; role: 'user'; content: string }
   | { id: string; role: 'bot'; type: 'typing' }
   | { id: string; role: 'bot'; type: 'tax_result'; data: TaxResponse }
-  | { id: string; role: 'bot'; type: 'fire_result'; data: FireResponse; retireAge: number };
+  | { id: string; role: 'bot'; type: 'fire_result'; data: FireResponse; retireAge: number }
+  | { id: string; role: 'bot'; type: 'agent_result'; agentType: string; data: any };
 
 type ConversationStep =
   // ── Phase 1 (skipped when wizard data is provided) ──
@@ -201,6 +204,7 @@ export function useChatBot(initialData?: CollectedData) {
   const [fireResult, setFireResult] = useState<FireResponse | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [sessionId] = useState(() => uid());
+  const sessionRestoredRef = useRef(false);
 
   // Refs must be declared before use
   const hasTriggeredRef = useRef(false);
@@ -331,8 +335,46 @@ export function useChatBot(initialData?: CollectedData) {
     }
   }, [initialData, runTaxAndAskFire]);
 
+  // ── Restore session from Supabase on mount ────────────────────────────────
+  useEffect(() => {
+    if (!user || sessionRestoredRef.current || isProfileComplete || hasWizardData) return;
+    sessionRestoredRef.current = true;
+    fetchChatSession(user.id).then((session) => {
+      if (!session) return;
+      const restoredData = session.collected_data as CollectedData;
+      const restoredStep = session.current_step as ConversationStep;
+      setCollected(restoredData);
+      setStep(restoredStep);
+      // Find next unanswered so we never re-ask answered questions
+      const nextStep = getNextUnansweredStep(restoredStep, restoredData);
+      const salary = restoredData.income?.base_salary;
+      const salaryStr = salary ? ` Your salary of ₹${(salary / 100_000).toFixed(1)}L is on file.` : '';
+      setMessages([
+        {
+          id: uid(),
+          role: 'bot',
+          type: 'text',
+          content: `Welcome back! 👋 I've resumed your session.${salaryStr}\n\nLet me pick up from where we left off...`,
+        },
+      ]);
+      if (nextStep !== restoredStep) {
+        setStep(nextStep);
+      }
+    });
+  }, [user, isProfileComplete, hasWizardData]);
+
+  // ── Auto-save session every 2s (Pillar 1) ────────────────────────────────
+  useChatSession(user?.id, collected, step);
+
   const processStep = useCallback(
     async (userText: string, currentStep: ConversationStep, currentCollected: CollectedData) => {
+      // ── Smart skip: jump over already-answered questions ─────────────────
+      const effectiveStep = getNextUnansweredStep(currentStep, currentCollected);
+      if (effectiveStep !== currentStep) {
+        console.log(`[Skipper] Jumping ${currentStep} → ${effectiveStep}`);
+        return processStep(userText, effectiveStep, currentCollected);
+      }
+
       let nextStep = currentStep;
       let newData = { ...currentCollected };
 
@@ -921,7 +963,6 @@ export function useChatBot(initialData?: CollectedData) {
 
         case 'done': {
           const lower = userText.toLowerCase();
-          if (/start over|restart|reset/.test(lower)) { window.location.reload(); return; }
           if (/retire at (\d+)|what if/.test(lower)) {
             const match = lower.match(/(\d+)/);
             const newRetire = match ? parseInt(match[1]) : (collected.demographics?.age ?? 30) + 20;
@@ -1003,6 +1044,72 @@ export function useChatBot(initialData?: CollectedData) {
     [isTyping, step, collected, processStep]
   );
 
+  const askAgent = useCallback(async (agentType: 'sip' | 'insurance' | 'loan' | 'expenses') => {
+    if (isTyping) return;
+    
+    // Add user message to show intent
+    const intentMessages: Record<string, string> = {
+      sip: "💰 Suggest best SIPs for my budget",
+      insurance: "🛡️ Do I need insurance?",
+      loan: "🏠 Optimize my EMIs",
+      expenses: "📊 Track my monthly expenses",
+    };
+    
+    const userMsg: ChatMessage = { id: uid(), role: 'user', content: intentMessages[agentType] };
+    setMessages(prev => [...prev, userMsg]);
+    
+    const typingId = uid();
+    typingIdRef.current = typingId;
+    setIsTyping(true);
+    setMessages(prev => [...prev, { id: typingId, role: 'bot', type: 'typing' }]);
+    
+    try {
+      // Map frontend agent types to backend routes
+      const endpointMap = {
+        sip: '/api/agents/sip/recommend',
+        insurance: '/api/agents/insurance/recommend',
+        loan: '/api/agents/loan/optimize',
+        expenses: '/api/agents/expense/analyse'
+      };
+      
+      const response = await fetch(endpointMap[agentType], {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+            profile: collected,
+            message: "Analyze my profile and provide suggestions.",
+            history: []
+         })
+      });
+      
+      setMessages(prev => prev.filter(m => m.id !== typingId));
+      setIsTyping(false);
+      
+      if (!response.ok) throw new Error('Agent API Error');
+      const data = await response.json();
+      
+      try {
+        const parsed = typeof data.text === 'string' ? JSON.parse(data.text) : data;
+        setMessages(prev => [...prev, {
+           id: uid(),
+           role: 'bot',
+           type: 'agent_result',
+           agentType,
+           data: parsed
+        } as ChatMessage]);
+      } catch (parseErr) {
+        console.error("JSON Parse Error:", parseErr, "Raw output:", data.text);
+        await addBotMessage("I got an invalid response from the specialized agent.", 0);
+      }
+      
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => prev.filter(m => m.id !== typingIdRef.current));
+      setIsTyping(false);
+      await addBotMessage("I'm having trouble connecting to the specialized AI agent right now.", 0);
+    }
+  }, [isTyping, collected, addBotMessage]);
+
   // ── Progress ───────────────────────────────────────────────────────────
   const progress = (() => {
     let score = 0;
@@ -1039,5 +1146,6 @@ export function useChatBot(initialData?: CollectedData) {
     fireResult,
     progress,
     quickReplies: QUICK_REPLIES[step] ?? [],
+    askAgent,
   };
 }
