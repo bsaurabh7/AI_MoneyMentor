@@ -1,4 +1,4 @@
-import { CheckCircle, Circle } from 'lucide-react';
+import { CheckCircle, Circle, TrendingUp, Landmark, CreditCard, HandCoins, UserCheck, FileText, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { type TaxResponse, type FireResponse, formatINR, formatCr } from '../../utils/finCalc';
 import { type CollectedData, getSalary, getHRA, get80C, getNPS, getCurrentAge } from '../../hooks/useCollectedData';
@@ -108,142 +108,104 @@ export function SummaryPanel({ collected, taxResult, fireResult, progress, onSta
             })}
           </div>
         </div>
-
-        {/* Tax Result */}
-        {taxResult ? (
-          <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#F1F5F9] flex items-center justify-between">
-              <h3 className="text-[#0F172A] font-semibold text-sm">Tax Analysis Complete ✓</h3>
-              <span className="text-[#10B981] text-xs font-medium">
-                Save {formatINR(taxResult.savings)}
-              </span>
-            </div>
-            <div className="p-4">
-              {/* Side by side mini cards */}
-              <div className="flex gap-3 mb-4">
-                {[
-                  { label: 'Old Regime', data: taxResult.old_regime, isWinner: taxResult.winner === 'old' },
-                  { label: 'New Regime', data: taxResult.new_regime, isWinner: taxResult.winner === 'new' },
-                ].map(({ label, data, isWinner }) => (
-                  <div
-                    key={label}
-                    className="flex-1 rounded-xl p-3"
-                    style={
-                      isWinner
-                        ? { background: '#F0FDF4', border: '2px solid #10B981' }
-                        : { background: '#F8FAFC', border: '1px solid #E2E8F0' }
-                    }
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[#374151] text-xs font-medium">{label}</p>
-                      {isWinner && (
-                        <span className="text-[10px] bg-[#10B981] text-white px-1.5 py-0.5 rounded-full font-semibold">
-                          Best ✓
-                        </span>
-                      )}
-                    </div>
-                    <p className={`font-bold text-base ${isWinner ? 'text-[#10B981]' : 'text-[#374151]'}`}>
-                      {formatINR(data.total_tax)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Detailed comparison table */}
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-[#F1F5F9]">
-                    <th className="text-left text-[#94A3B8] py-1.5 font-medium">Item</th>
-                    <th className="text-right text-[#6366F1] py-1.5 font-medium">Old</th>
-                    <th className="text-right text-[#94A3B8] py-1.5 font-medium">New</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F8FAFC]">
-                  {[
-                    ['Gross Income', formatINR(getSalary(collected)), formatINR(getSalary(collected))],
-                    ['Deductions', formatINR(taxResult.old_regime.deductions), formatINR(taxResult.new_regime.deductions)],
-                    ['Taxable Income', formatINR(taxResult.old_regime.taxable_income), formatINR(taxResult.new_regime.taxable_income)],
-                    ['Tax', formatINR(taxResult.old_regime.tax_before_cess), formatINR(taxResult.new_regime.tax_before_cess)],
-                    ['Cess (4%)', formatINR(taxResult.old_regime.cess), formatINR(taxResult.new_regime.cess)],
-                    ['Final Tax', formatINR(taxResult.old_regime.total_tax), formatINR(taxResult.new_regime.total_tax)],
-                  ].map(([item, old, nw]) => (
-                    <tr key={item}>
-                      <td className="py-1.5 text-[#64748B]">{item}</td>
-                      <td
-                        className={`py-1.5 text-right font-medium ${taxResult.winner === 'old' ? 'text-[#10B981]' : 'text-[#374151]'}`}
-                        style={taxResult.winner === 'old' && item === 'Final Tax' ? { background: '#F0FDF4', borderRadius: 4 } : {}}
-                      >
-                        {old}
-                      </td>
-                      <td
-                        className={`py-1.5 text-right font-medium ${taxResult.winner === 'new' ? 'text-[#10B981]' : 'text-[#374151]'}`}
-                      >
-                        {nw}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
-            <p className="text-[#374151] font-medium text-sm mb-1">Tax Analysis</p>
-            <p className="text-[#94A3B8] text-xs">Waiting for your salary & deduction info...</p>
-          </div>
-        )}
-
-        {/* FIRE Result or Placeholder */}
-        {fireResult ? (
-          <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-[#6366F1]">
-              <p className="text-white font-semibold text-sm">FIRE Plan Summary 🔥</p>
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Corpus Needed', value: formatCr(fireResult.corpus_needed) },
-                  { label: 'SIP/month', value: formatINR(fireResult.sip_per_month) },
-                  { label: 'Years', value: `${fireResult.years_to_retire} yrs` },
-                ].map(({ label, value }) => (
-                  <div key={label} className="text-center bg-[#F8FAFC] rounded-lg p-2.5">
-                    <p className="text-[#94A3B8] text-[10px] mb-0.5">{label}</p>
-                    <p className="text-[#0F172A] font-bold text-sm">{value}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[#64748B]">Feasibility:</span>
-                <span
-                  className={`font-semibold ${
-                    fireResult.feasibility === 'on track'
-                      ? 'text-[#10B981]'
-                      : fireResult.feasibility === 'stretch goal'
-                      ? 'text-[#F59E0B]'
-                      : 'text-[#EF4444]'
-                  }`}
-                >
-                  {fireResult.feasibility === 'on track' ? '✓ On Track' : fireResult.feasibility === 'stretch goal' ? '⚡ Stretch Goal' : '⚠ Needs Revision'}
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white border-2 border-dashed border-[#E2E8F0] rounded-xl p-5 text-center">
-            <p className="text-[#374151] font-medium text-sm mb-1">FIRE Retirement Plan</p>
-            <p className="text-[#94A3B8] text-xs mb-4">
-              FIRE plan will appear here once you share your age and expenses
-            </p>
-            {taxResult && (
+        {/* ── Quick Actions ── */}
+        <div>
+          <h3 className="text-[#64748B] text-xs font-semibold uppercase tracking-wider mb-3">
+            Quick Actions
+          </h3>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[
+              {
+                icon: <TrendingUp className="w-4 h-4" />,
+                label: 'Open Demat Account',
+                desc: 'Start investing in stocks & MFs',
+                color: '#6366F1',
+                bg: '#EEF2FF',
+                border: '#C7D2FE',
+                url: 'https://zerodha.com/open-account',
+              },
+              {
+                icon: <Landmark className="w-4 h-4" />,
+                label: 'High-Yield Savings',
+                desc: 'Earn up to 7% on idle cash',
+                color: '#10B981',
+                bg: '#F0FDF4',
+                border: '#BBF7D0',
+                url: 'https://www.fi.money',
+              },
+              {
+                icon: <CreditCard className="w-4 h-4" />,
+                label: 'Apply for Credit Card',
+                desc: 'Cashback & rewards for your spend',
+                color: '#8B5CF6',
+                bg: '#F5F3FF',
+                border: '#DDD6FE',
+                url: 'https://www.bankbazaar.com/credit-card.html',
+              },
+              {
+                icon: <HandCoins className="w-4 h-4" />,
+                label: 'Compare Loan Rates',
+                desc: 'Home, personal & education loans',
+                color: '#EA580C',
+                bg: '#FFF7ED',
+                border: '#FED7AA',
+                url: 'https://www.paisabazaar.com/personal-loan/',
+              },
+              {
+                icon: <UserCheck className="w-4 h-4" />,
+                label: 'Talk to an Advisor',
+                desc: 'SEBI-registered financial planner',
+                color: '#0891B2',
+                bg: '#ECFEFF',
+                border: '#A5F3FC',
+                url: 'https://www.hdfcbank.com/personal/invest',
+              },
+              {
+                icon: <FileText className="w-4 h-4" />,
+                label: 'Export Report',
+                desc: 'Download your financial summary',
+                color: '#64748B',
+                bg: '#F8FAFC',
+                border: '#E2E8F0',
+                action: 'export',
+              },
+            ].map((card) => (
               <button
-                onClick={onStartFire}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#EEF2FF] text-[#6366F1] text-xs font-semibold hover:bg-[#E0E7FF] transition-colors"
+                key={card.label}
+                onClick={() => {
+                  if (card.action === 'export') {
+                    window.print();
+                  } else if (card.url) {
+                    window.open(card.url, '_blank', 'noopener');
+                  }
+                }}
+                className="group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+                style={{ background: card.bg, borderColor: card.border }}
               >
-                Start FIRE planning ↓
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ background: card.color + '18', color: card.color }}
+                >
+                  {card.icon}
+                </div>
+                <div>
+                  <p className="text-[#0F172A] text-xs font-bold leading-tight flex items-center gap-1">
+                    {card.label}
+                    {card.url && <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60 transition-opacity" />}
+                  </p>
+                  <p className="text-[#64748B] text-[10px] leading-tight mt-0.5">{card.desc}</p>
+                </div>
               </button>
-            )}
+            ))}
           </div>
-        )}
+        </div>
+
+        {/* ── Disclaimer ── */}
+        <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-lg px-3 py-2">
+          <p className="text-[10px] text-[#92400E] leading-relaxed">
+            <strong>Disclaimer:</strong> Links are for informational purposes only. Arthmize does not receive commissions and is not a SEBI-registered advisor. Always do your own research.
+          </p>
+        </div>
       </div>
     </div>
   );
