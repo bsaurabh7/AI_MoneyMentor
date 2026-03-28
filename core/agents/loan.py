@@ -47,7 +47,7 @@ async def analyse_loans(req: LoanRequest):
     search_summary = json.dumps(results[:3], indent=2) if isinstance(results, list) else ""
 
     prompt = f"""
-You are FinPilot's Debt & Liability Specialist for India.
+You are Arthmize AI's Debt & Liability Specialist for India.
 
 [USER PROFILE]
 {context_str}

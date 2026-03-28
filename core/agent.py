@@ -26,7 +26,7 @@ try:
         system_instruction = f.read()
 except FileNotFoundError:
     print(f"WARNING: System prompt not found at {prompt_path}")
-    system_instruction = "You are FinPilot AI, an expert Indian personal finance advisor."
+    system_instruction = "You are Arthmize AI, an expert Indian personal finance advisor."
 
 print(f"Using AI Model: {MODEL_NAME} (HuggingFace Serverless API)")
 

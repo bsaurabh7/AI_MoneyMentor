@@ -245,7 +245,7 @@ export function ChatScreen() {
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="text-[#0F172A] font-bold text-sm leading-tight">FinPilot AI</p>
+              <p className="text-[#0F172A] font-bold text-sm leading-tight">Arthmize</p>
               <p className="text-[#94A3B8] text-xs leading-tight">Tax &amp; FIRE Advisor</p>
             </div>
           </div>

@@ -326,7 +326,7 @@ export function MoneyHealth() {
                 value={answers.tax_regime_optimized ? 'yes' : 'no'}
                 onChange={(e) => set('tax_regime_optimized')(e.target.value === 'yes')}
               >
-                <option value="yes">Optimized (Used FinPilot Tax Tool)</option>
+                <option value="yes">Optimized (Used Arthmize Tax Tool)</option>
                 <option value="no">Not Optimized / Unsure</option>
               </select>
             </div>

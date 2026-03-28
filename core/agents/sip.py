@@ -19,7 +19,7 @@ from schemas import SIP_RESPONSE_SCHEMA
 router = APIRouter()
 
 SYSTEM_PROMPT = """
-You are FinPilot's SIP & Mutual Fund Specialist for India.
+You are Arthmize AI's SIP & Mutual Fund Specialist for India.
 
 Your job:
 1. Assess the user's risk profile from their age, income, savings, and goals.

@@ -1,4 +1,4 @@
-# Arthmize — FinPilot AI Backend Setup
+# Arthmize AI Backend Setup
 
 > **Python FastAPI + Gemini Flash + DDGS + Playwright**  
 > Zero paid APIs except one Gemini key.

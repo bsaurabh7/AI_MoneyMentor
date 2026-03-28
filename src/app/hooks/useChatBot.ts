@@ -189,7 +189,7 @@ export function useChatBot(initialData?: CollectedData) {
     ? `Welcome back! I've loaded your full profile from the database 📊\n\nYour **Tax, FIRE & Money Health reports** have been generated in the sidebar. What would you like to analyze or explore today?`
     : hasWizardData
       ? `Great! I've got your profile details 👋\n\nRunning your **Tax Analysis** now — calculating Old Regime vs New Regime for your ₹${((initialData!.income!.base_salary ?? 0) / 100_000).toFixed(1)}L salary... 🧮`
-      : "Hi! I'm FinPilot 👋 I'll help you optimize your taxes, plan retirement, and build your Money Health Score.\n\nWhat's your **annual salary (CTC)**? (e.g. \"18 lakhs\" or \"18L\")";
+      : "Hi! I'm Arthmize 👋 I'll help you optimize your taxes, plan retirement, and build your Money Health Score.\n\nWhat's your **annual salary (CTC)**? (e.g. \"18 lakhs\" or \"18L\")";
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     { id: uid(), role: 'bot', type: 'text', content: openingMsg },
@@ -278,7 +278,7 @@ export function useChatBot(initialData?: CollectedData) {
         id: uid(),
         role: 'bot',
         type: 'text',
-        content: `Hello 👋 Welcome to FinPilot AI!\n\nI see you've started setting up your profile. To unlock my specialized AI agents and start getting personalized advice, please complete your data in **My Profile**.`
+        content: `Hello 👋 Welcome to Arthmize AI!\n\nI see you've started setting up your profile. To unlock my specialized AI agents and start getting personalized advice, please complete your data in **My Profile**.`
       }]);
     }
   }, [initialData]);

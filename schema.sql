@@ -1,4 +1,4 @@
--- FinPilot v2.0 Schema — Run this ENTIRE script in Supabase SQL Editor
+-- Arthmize Schema — Run this ENTIRE script in Supabase SQL Editor
 -- Safe to re-run: uses IF NOT EXISTS / ALTER TABLE ADD COLUMN IF NOT EXISTS
 
 -- ════════════════════════════════════════════════════════

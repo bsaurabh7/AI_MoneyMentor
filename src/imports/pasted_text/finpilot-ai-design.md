@@ -7,12 +7,12 @@ Here's the complete Figma AI prompt package — full app shell + all 4 screens +
 ## Prompt 0 — The Full App Shell (Start Here)
 
 ```
-Design a complete single-page web application called "FinPilot AI — Your Money Mentor".
+Design a complete single-page web application called "Arthmize AI — Your Money Mentor".
 
 Layout: 1440px desktop. Dark left sidebar (260px wide) + white main content area.
 
 Sidebar:
-- Top: App logo — a small compass icon + "FinPilot AI" in white, 18px bold
+- Top: App logo — a small compass icon + "Arthmize AI" in white, 18px bold
 - Below logo: User greeting "Hello, Saurabh" with a small avatar circle
 - Navigation links (vertical list, 48px each, with left icon):
   → Tax Optimizer (calculator icon) — ACTIVE state: white bg pill, dark text
@@ -67,7 +67,7 @@ RIGHT — "New Regime" card:
   - Subtle green border (2px #10B981)
 
 Row 3 — AI Explanation card:
-Full width card. Left: small indigo robot icon + "FinPilot AI says" label in indigo.
+Full width card. Left: small indigo robot icon + "Arthmize AI says" label in indigo.
 Body: 3–4 lines of explanation text (use placeholder lorem ipsum).
 Background: very light indigo tint (#EEF2FF).
 Bottom right: small muted text "Not licensed financial advice · SEBI compliant"
@@ -189,11 +189,11 @@ Section 4 — AI Rebalancing card (full width):
 ## Prompt 5 — Reusable Components Library
 
 ```
-Design a component library page for a financial dashboard app called "FinPilot AI".
+Design a component library page for a financial dashboard app called "Arthmize".
 Show all components on a single Figma frame with a light gray (#F1F5F9) background, organized in rows with section labels.
 
 ROW 1 — "AI Explanation Card" (3 variants):
-Variant A: Light indigo tint (#EEF2FF bg), indigo robot icon left, "FinPilot AI says" label, 3 lines of body text, disclaimer small text bottom right.
+Variant A: Light indigo tint (#EEF2FF bg), indigo robot icon left, "Arthmize AI says" label, 3 lines of body text, disclaimer small text bottom right.
 Variant B: Same but with a loading skeleton state (animated shimmer bars instead of text).
 Variant C: Collapsed state — just the icon + "See AI analysis ↓" expand link.
 
