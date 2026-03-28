@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import {
@@ -63,7 +63,8 @@ const EditableRow = ({ label, icon, field, valueStr, colorClass = "text-slate-80
 
 export function ProfilePage() {
   const navigate = useNavigate();
-  const { user, refreshProfile } = useAuth();
+  const location = useLocation();
+  const { user, loading: authLoading, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   
@@ -72,7 +73,15 @@ export function ProfilePage() {
   const [editData, setEditData] = useState<any>({});
   const [saving, setSaving] = useState(false);
 
+  // Handle incoming edit request from Chat
   useEffect(() => {
+    if (location.state?.editMode) {
+      setIsEditing(true);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (authLoading) return;
     if (!user) {
       navigate('/');
       return;
@@ -165,21 +174,7 @@ export function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]" style={{ fontFamily: 'Inter, sans-serif' }}>
-      {/* ── Navbar ── */}
-      <nav className="flex items-center justify-between px-6 md:px-12 h-16 bg-white border-b border-[#E2E8F0] sticky top-0 z-10">
-        <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => navigate('/')}>
-          <div className="w-8 h-8 rounded-lg bg-[#6366F1] flex items-center justify-center">
-            <Compass className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-[#0F172A] font-bold text-lg">Arthmize</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#FFFBEB] border border-[#FCD34D]">
-            <AlertTriangle className="w-3.5 h-3.5 text-[#92400E]" />
-            <span className="text-[#92400E] text-xs font-medium">Not financial advice</span>
-          </div>
-        </div>
-      </nav>
+      
 
       {/* ── Main Content ── */}
       <main className="max-w-4xl mx-auto px-4 py-8 md:py-12">
@@ -235,13 +230,10 @@ export function ProfilePage() {
         {noData && !isEditing ? (
           <div className="bg-white rounded-2xl border border-dashed border-[#6366F1] p-12 text-center">
             <Compass className="w-12 h-12 text-[#6366F1] mx-auto mb-4 opacity-40" />
-            <h2 className="text-lg font-semibold text-slate-700 mb-2">No profile data yet</h2>
-            <p className="text-slate-500 mb-6">Start an AI chat to build your Tax, FIRE & Money Health profile automatically.</p>
+            <h2 className="text-lg font-semibold text-slate-700 mb-2">No profile data found</h2>
+            <p className="text-slate-500 mb-6">Please manually enter your financial details below to unlock FinPilot's AI agents in the Chat portal.</p>
             <div className="flex items-center justify-center gap-4">
-              <button onClick={() => navigate('/chat')} className="px-6 py-2.5 bg-[#6366F1] text-white rounded-xl font-medium hover:bg-[#4F46E5] transition-colors shadow-sm">
-                Start Chat →
-              </button>
-              <button onClick={() => setIsEditing(true)} className="px-6 py-2.5 bg-white text-[#6366F1] border border-[#C7D2FE] rounded-xl font-medium hover:bg-[#EEF2FF] transition-colors">
+              <button onClick={() => setIsEditing(true)} className="px-6 py-2.5 bg-[#6366F1] text-white rounded-xl font-medium hover:bg-[#4F46E5] transition-colors shadow-sm">
                 Enter Details Manually
               </button>
             </div>
@@ -256,6 +248,7 @@ export function ProfilePage() {
               </h2>
               <div className="space-y-3">
                 <EditableRow
+                  isEditing={isEditing} data={data} editData={editData} setEditData={setEditData}
                   label="Employment" icon={<Briefcase className="w-3.5 h-3.5" />} field="employment_type" valueStr={fmtStr(data?.employment_type)} type="select"
                   options={[
                     { label: 'Salaried', value: 'salaried' },
@@ -266,10 +259,12 @@ export function ProfilePage() {
                   ]}
                 />
                 <EditableRow
+                  isEditing={isEditing} data={data} editData={editData} setEditData={setEditData}
                   label="Date of Birth" icon={<Calendar className="w-3.5 h-3.5" />} field="date_of_birth"
                   valueStr={data?.date_of_birth ? (new Date().getFullYear() - new Date(data.date_of_birth).getFullYear()) + ' yrs' : '—'} type="date"
                 />
                 <EditableRow
+                  isEditing={isEditing} data={data} editData={editData} setEditData={setEditData}
                   label="City Type" icon={<MapPin className="w-3.5 h-3.5" />} field="city_type" valueStr={fmtStr(data?.city_type)} type="select"
                   options={[
                     { label: 'Metro', value: 'metro' },
@@ -278,6 +273,7 @@ export function ProfilePage() {
                   ]}
                 />
                 <EditableRow
+                  isEditing={isEditing} data={data} editData={editData} setEditData={setEditData}
                   label="Marital Status" icon={<Heart className="w-3.5 h-3.5" />} field="marital_status" valueStr={fmtStr(data?.marital_status)} type="select"
                   options={[
                     { label: 'Single', value: 'single' },
