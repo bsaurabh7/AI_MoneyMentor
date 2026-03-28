@@ -108,5 +108,18 @@ export type HealthScore = {
   debt_score: number;
   tax_score: number;
   retirement_score: number;
+  
+  // Raw inputs
+  emergency_months: string | null;
+  has_term_insurance: boolean | null;
+  has_health_insurance: boolean | null;
+  monthly_sip: number | null;
+  total_investments: number | null;
+  has_home_loan: boolean | null;
+  monthly_emi: number | null;
+  tax_regime_optimized: boolean | null;
+  annual_income: number | null;
+  epf_nps_contribution: number | null;
+  
   created_at: string;
 };
