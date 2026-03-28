@@ -1,7 +1,7 @@
 import { CheckCircle, Circle, TrendingUp, Landmark, CreditCard, HandCoins, UserCheck, FileText, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { type TaxResponse, type FireResponse, formatINR, formatCr } from '../../utils/finCalc';
-import { type CollectedData, getSalary, getHRA, get80C, getNPS, getCurrentAge } from '../../hooks/useCollectedData';
+import type { TaxResponse, FireResponse } from '../../utils/finCalc';
+import type { CollectedData } from '../../hooks/useCollectedData';
 
 interface Props {
   collected: CollectedData;
@@ -13,24 +13,30 @@ interface Props {
 
 interface PillDef {
   label: string;
-  getValue: (c: CollectedData) => number | string | undefined;
+  getValue: (c: CollectedData) => number | string | boolean | undefined;
   format: (v: any) => string;
 }
 
+// Trim long strings to max N chars
+const trunc = (s: string, n = 8) => s.length > n ? s.slice(0, n) + '…' : s;
+const inL = (v: number) => v >= 100_000 ? `₹${(v / 100_000).toFixed(1)}L` : `₹${Math.round(v / 1000)}K`;
+const inK = (v: number) => v === 0 ? '₹0' : `₹${Math.round(v / 1000)}K/mo`;
+
 const PILLS: PillDef[] = [
-  { label: 'Salary',     getValue: (c) => c.income?.base_salary,           format: (v) => `₹${(v / 100000).toFixed(1)}L` },
-  { label: 'HRA',        getValue: (c) => c.income?.hra_received,           format: (v) => `₹${(v / 100000).toFixed(1)}L` },
-  { label: '80C',        getValue: (c) => c.assets?.deduction_80c,          format: (v) => `₹${(v / 100000).toFixed(1)}L` },
-  { label: 'NPS',        getValue: (c) => c.assets?.nps_80ccd,              format: (v) => `₹${(v / 1000).toFixed(0)}K` },
-  { label: 'Age',        getValue: (c) => c.demographics?.age,              format: (v) => `${v} yrs` },
-  { label: 'City',       getValue: (c) => c.demographics?.city_type,        format: (v) => v },
-  { label: 'Expenses',   getValue: (c) => c.expenses?.fixed_monthly,        format: (v) => `₹${(v / 1000).toFixed(0)}K/mo` },
-  { label: 'Rent',       getValue: (c) => c.expenses?.rent_paid_monthly,    format: (v) => v === 0 ? 'Own home' : `₹${(v / 1000).toFixed(0)}K/mo` },
-  { label: 'Insurance',  getValue: (c) => c.expenses?.health_insurance_premium, format: (v) => `₹${(v / 1000).toFixed(0)}K/yr` },
-  { label: 'Home Loan',  getValue: (c) => c.liabilities?.home_loan_emi,    format: (v) => v === 0 ? 'None' : `₹${(v / 1000).toFixed(0)}K/mo` },
-  { label: 'CC Debt',    getValue: (c) => c.liabilities?.credit_card_debt,  format: (v) => v === 0 ? 'None' : formatINR(v) },
-  { label: 'EM Fund',    getValue: (c) => c.assets?.emergency_fund,         format: (v) => formatCr(v) },
+  { label: 'Job',       getValue: (c) => c.demographics?.employment_type,    format: (v) => trunc(v.charAt(0).toUpperCase() + v.slice(1), 10) },
+  { label: 'Age',       getValue: (c) => c.demographics?.age,                format: (v) => `${v}y` },
+  { label: 'City',      getValue: (c) => c.demographics?.city_type,          format: (v) => v === 'non-metro' ? 'Non-Metro' : v.charAt(0).toUpperCase() + v.slice(1) },
+  { label: 'Status',    getValue: (c) => c.demographics?.marital_status,     format: (v) => v.charAt(0).toUpperCase() + v.slice(1) },
+  { label: 'Salary',    getValue: (c) => c.income?.base_salary,              format: inL },
+  { label: 'HRA',       getValue: (c) => c.income?.hra_received,             format: inL },
+  { label: 'Expenses',  getValue: (c) => c.expenses?.fixed_monthly,          format: inK },
+  { label: 'Rent',      getValue: (c) => c.expenses?.rent_paid_monthly,      format: (v) => v === 0 ? 'Own home' : inK(v) },
+  { label: '80C',       getValue: (c) => c.assets?.deduction_80c,            format: inL },
+  { label: 'NPS',       getValue: (c) => c.assets?.nps_80ccd,               format: inL },
+  { label: 'SIP',       getValue: (c) => c.assets?.monthly_sip,              format: inK },
+  { label: 'Savings',   getValue: (c) => c.assets?.current_savings,          format: inL },
 ];
+
 
 export function SummaryPanel({ collected, taxResult, fireResult, progress, onStartFire }: Props) {
   const navigate = useNavigate();
