@@ -2,5 +2,7 @@ fastapi
 uvicorn
 google-generativeai
 playwright
-duckduckgo-search
+playwright-stealth
+ddgs
 python-dotenv
+pydantic
