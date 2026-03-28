@@ -227,3 +227,18 @@ create policy "Users can view their own portfolio analysis" on public.portfolio_
 create policy "Users can insert their own portfolio analysis" on public.portfolio_analysis for insert with check (auth.uid() = user_id);
 create policy "Users can update their own portfolio analysis" on public.portfolio_analysis for update using (auth.uid() = user_id);
 create policy "Users can delete their own portfolio analysis" on public.portfolio_analysis for delete using (auth.uid() = user_id);
+
+
+-- ===============================
+--         Chat Session
+-- ===============================
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
+  current_step TEXT NOT NULL,
+  collected_data JSONB NOT NULL DEFAULT '{}',
+  last_updated TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
