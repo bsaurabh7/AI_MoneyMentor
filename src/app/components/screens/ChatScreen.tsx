@@ -21,7 +21,7 @@ const FREE_KEY = 'fp_free_used';
 
 export function ChatScreen() {
   const navigate = useNavigate();
-  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
+  const { user, profile, loading: authLoading, profileLoading, refreshProfile } = useAuth();
   const [input, setInput] = useState('');
   const [wizardData, setWizardData] = useState<CollectedData | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -48,30 +48,32 @@ export function ChatScreen() {
     }
   }, [user]);
 
-  // Populate wizardData from global profile if it exists
+  // Populate wizardData — DB profile always wins over stale session cache
   useEffect(() => {
-    // Try to load from session storage first to preserve precise progress state
-    const cached = sessionStorage.getItem('finpilot_wizard_data');
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Object.keys(parsed).length > 0 && !wizardData) {
-          setWizardData(parsed);
-          return;
-        }
-      } catch (e) {
-        console.error('Failed to parse cached wizard data', e);
-      }
-    }
+    if (authLoading || profileLoading) return; // wait for auth to fully resolve
 
+    // Score a CollectedData object by richness (more filled = higher score)
+    const dataScore = (d: CollectedData) => {
+      let s = 0;
+      if (d.income?.base_salary) s += 3;
+      if (d.demographics?.employment_type) s += 2;
+      if (d.demographics?.age) s += 1;
+      if (d.demographics?.city_type) s += 1;
+      if (d.demographics?.marital_status) s += 1;
+      return s;
+    };
+
+    // Build DB-mapped data if the user has a full profile
+    let dbMapped: CollectedData | null = null;
     if (user && profile && profile.annual_income) {
       const p = profile as any;
-      const mapped: CollectedData = {
+      dbMapped = {
         demographics: {
           age: p.date_of_birth ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear() : undefined,
           city_type: p.city_type || undefined,
           employment_type: p.employment_type || undefined,
           marital_status: p.marital_status || undefined,
+          dependents: p.dependents ?? undefined,
         },
         income: {
           base_salary: p.annual_income ?? undefined,
@@ -105,10 +107,29 @@ export function ChatScreen() {
           credit_card_debt: p.credit_card_debt || 0,
         }
       };
-      // Only set wizardData from profile if we don't already have live wizardData
-      setWizardData(prev => prev || mapped);
     }
-  }, [user, profile]);
+
+    // Load session cache as fallback
+    let cachedData: CollectedData | null = null;
+    const cached = sessionStorage.getItem('finpilot_wizard_data');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Object.keys(parsed).length > 0) cachedData = parsed;
+      } catch {
+        sessionStorage.removeItem('finpilot_wizard_data');
+      }
+    }
+
+    // DB data wins when it's at least as rich as the cache
+    if (dbMapped && (!cachedData || dataScore(dbMapped) >= dataScore(cachedData))) {
+      sessionStorage.setItem('finpilot_wizard_data', JSON.stringify(dbMapped));
+      setWizardData(dbMapped);
+    } else if (cachedData) {
+      setWizardData(cachedData);
+    }
+    // If neither — wizard popup will show
+  }, [user, profile, authLoading, profileLoading]);
 
   const [hasUsedFree, setHasUsedFree] = useState(false);
   useEffect(() => {
@@ -137,12 +158,14 @@ export function ChatScreen() {
 
   const handleWizardComplete = async (data: CollectedData) => {
     setWizardData(data);
+    // Write to session immediately so all modules use fresh data
+    sessionStorage.setItem('finpilot_wizard_data', JSON.stringify(data));
+
     if (user) {
-      // Generate a DOY string if age is given to fake date of birth for context, since profile demands Date natively.
-      const dobStr = data.demographics?.age 
-        ? `${new Date().getFullYear() - data.demographics.age}-01-01` 
+      const dobStr = data.demographics?.age
+        ? `${new Date().getFullYear() - data.demographics.age}-01-01`
         : undefined;
-      
+
       try {
         const sNum = (n: any) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);
         const sStr = (s: any) => (typeof s === 'string' && s.trim() !== '' ? s : null);
@@ -155,16 +178,26 @@ export function ChatScreen() {
           marital_status: sStr(data.demographics?.marital_status),
           annual_income: sNum(data.income?.base_salary),
           hra_received: sNum(data.income?.hra_received),
+          epf_monthly: sNum(data.income?.epf_monthly),
+          secondary_income_monthly: sNum(data.income?.secondary_income_monthly),
+          passive_income_monthly: sNum(data.income?.passive_income_monthly),
           monthly_expense: sNum(data.expenses?.fixed_monthly),
           rent_paid_monthly: sNum(data.expenses?.rent_paid_monthly),
+          health_insurance_premium: sNum(data.expenses?.health_insurance_premium),
           deduction_80c: sNum(data.assets?.deduction_80c),
           nps_80ccd: sNum(data.assets?.nps_80ccd),
+          current_savings: sNum(data.assets?.current_savings),
+          emergency_fund: sNum(data.assets?.emergency_fund),
+          monthly_sip: sNum(data.assets?.monthly_sip),
+          total_investments: sNum(data.assets?.total_investments),
+          home_loan_emi: sNum(data.liabilities?.home_loan_emi),
+          credit_card_debt: sNum(data.liabilities?.credit_card_debt),
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
-        
+
         await refreshProfile();
       } catch (err) {
-        console.error("Popup sync failed", err);
+        console.error('Popup sync failed', err);
       }
     }
   };

@@ -137,14 +137,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (updateError) return { error: updateError, success: false, message: updateError.message };
 
         // Explicitly sync this data to the user_profiles table to be absolutely certain it's stored
-        // The backend trigger already created the row on auth.users insert, so we just UPDATE it.
         await supabase.from('user_profiles')
-          .update({
+          .upsert({
+            user_id: session.user.id,
             full_name: fullName,
-            phone: phone ?? '',
-            date_of_birth: dateOfBirth ?? '',
-          })
-          .eq('user_id', session.user.id);
+            phone: phone ?? null,
+            date_of_birth: dateOfBirth ?? null,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id' });
 
         return { error: null, success: true };
       }
@@ -163,6 +163,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) return { error, success: false, message: error.message };
+
+      // Sync registration fields to user_profiles immediately (trigger may not copy auth metadata)
+      if (data.user) {
+        await supabase.from('user_profiles')
+          .upsert({
+            user_id: data.user.id,
+            full_name:     fullName,
+            phone:         phone ?? null,
+            date_of_birth: dateOfBirth ?? null,
+            updated_at:    new Date().toISOString(),
+          }, { onConflict: 'user_id' });
+      }
 
       // If email confirmation is disabled in Supabase, user is signed in immediately
       if (data.user && !data.session) {
