@@ -243,3 +243,29 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
+
+
+
+-- Adds missing analytics and profile tracking columns
+ALTER TABLE public.user_profiles 
+ADD COLUMN IF NOT EXISTS secondary_income_monthly numeric default 0,
+ADD COLUMN IF NOT EXISTS passive_income_monthly numeric default 0,
+ADD COLUMN IF NOT EXISTS epf_monthly numeric default 0,
+ADD COLUMN IF NOT EXISTS current_savings numeric default 0,
+ADD COLUMN IF NOT EXISTS emergency_fund numeric default 0,
+ADD COLUMN IF NOT EXISTS monthly_sip numeric default 0,
+ADD COLUMN IF NOT EXISTS total_investments numeric default 0,
+ADD COLUMN IF NOT EXISTS deduction_80c numeric default 0,
+ADD COLUMN IF NOT EXISTS deduction_80d numeric default 0,
+ADD COLUMN IF NOT EXISTS nps_80ccd numeric default 0,
+ADD COLUMN IF NOT EXISTS home_loan_emi numeric default 0,
+ADD COLUMN IF NOT EXISTS home_loan_interest_annual numeric default 0,
+ADD COLUMN IF NOT EXISTS credit_card_debt numeric default 0,
+ADD COLUMN IF NOT EXISTS emergency_months text check (emergency_months in ('<1', '1-3', '3-6', '>6')),
+ADD COLUMN IF NOT EXISTS has_term_insurance boolean default false,
+ADD COLUMN IF NOT EXISTS has_health_insurance boolean default true,
+ADD COLUMN IF NOT EXISTS tax_regime_chosen boolean,
+ADD COLUMN IF NOT EXISTS expected_return numeric default 0.12;
+
+-- Force Schema Cache reload
+NOTIFY pgrst, 'reload schema';
