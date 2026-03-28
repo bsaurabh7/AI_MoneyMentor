@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 import uvicorn
 from agent import generate_response
-from agents import insurance, sip, loan, expense
+from agents import insurance, sip, loan, expense, fire_recs, mf_analyzer
 import sys
 import asyncio
 
@@ -25,6 +25,8 @@ app.include_router(insurance.router, prefix="/api/agents/insurance", tags=["Insu
 app.include_router(sip.router,       prefix="/api/agents/sip",       tags=["SIP Agent"])
 app.include_router(loan.router,      prefix="/api/agents/loan",       tags=["Loan Agent"])
 app.include_router(expense.router,   prefix="/api/agents/expense",    tags=["Expense Agent"])
+app.include_router(fire_recs.router, prefix="/api/agents/fire-recs",  tags=["FIRE Recommendations"])
+app.include_router(mf_analyzer.router, prefix="/api/agents/mf-analyzer", tags=["MF Portfolio Scraper Analyzer"])
 
 # ── Main Chat Endpoint (Gemini orchestrator) ──────────────────────────────────
 class ChatRequest(BaseModel):

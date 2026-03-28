@@ -1,4 +1,4 @@
--- FinPilot v2.0 Schema — Run this ENTIRE script in Supabase SQL Editor
+-- Arthmize Schema — Run this ENTIRE script in Supabase SQL Editor
 -- Safe to re-run: uses IF NOT EXISTS / ALTER TABLE ADD COLUMN IF NOT EXISTS
 
 -- ════════════════════════════════════════════════════════
@@ -122,8 +122,14 @@ create table if not exists public.health_scores (
   -- Raw inputs used to calculate the score
   emergency_months text,
   has_term_insurance boolean,
+  has_health_insurance boolean,
   monthly_sip numeric default 0,
   total_investments numeric default 0,
+  has_home_loan boolean,
+  monthly_emi numeric default 0,
+  tax_regime_optimized boolean,
+  annual_income numeric default 0,
+  epf_nps_contribution numeric default 0,
 
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
@@ -137,9 +143,10 @@ create table if not exists public.health_scores (
 create table if not exists public.portfolio_funds (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users not null,
-  session_id text not null,
 
   fund_name text not null,
+  sip_amount numeric not null,
+  sip_start_date text not null,
   amount_invested numeric not null,
   current_value numeric not null,
   category text check (category in ('large_cap','mid_cap','small_cap','flexi_cap','elss','debt','international')),
@@ -153,7 +160,6 @@ create table if not exists public.portfolio_funds (
 create table if not exists public.portfolio_analysis (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users not null,
-  session_id text not null,
 
   total_invested numeric,
   total_current numeric,
@@ -167,7 +173,7 @@ create table if not exists public.portfolio_analysis (
 
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
 
-  unique(user_id, session_id)
+  unique(user_id)
 );
 
 -- ════════════════════════════════════════════════════════
@@ -267,5 +273,55 @@ ADD COLUMN IF NOT EXISTS has_health_insurance boolean default true,
 ADD COLUMN IF NOT EXISTS tax_regime_chosen boolean,
 ADD COLUMN IF NOT EXISTS expected_return numeric default 0.12;
 
+ALTER TABLE public.health_scores
+ADD COLUMN IF NOT EXISTS has_health_insurance boolean,
+ADD COLUMN IF NOT EXISTS has_home_loan boolean,
+ADD COLUMN IF NOT EXISTS monthly_emi numeric default 0,
+ADD COLUMN IF NOT EXISTS tax_regime_optimized boolean,
+ADD COLUMN IF NOT EXISTS annual_income numeric default 0,
+ADD COLUMN IF NOT EXISTS epf_nps_contribution numeric default 0;
+
+ALTER TABLE public.portfolio_funds
+DROP COLUMN IF EXISTS session_id,
+ADD COLUMN IF NOT EXISTS sip_amount numeric default 0,
+ADD COLUMN IF NOT EXISTS sip_start_date text default '2024-01';
+
+ALTER TABLE public.portfolio_analysis
+DROP COLUMN IF EXISTS session_id;
+-- Note: Manually drop old unique constraint for unique(user_id, session_id) and add unique(user_id) if needed on live dbs.
+
 -- Force Schema Cache reload
 NOTIFY pgrst, 'reload schema';
+
+create table if not exists fire_recommendations (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid references auth.users(id) on delete cascade not null,
+  risk_profile text not null,
+  status       text not null default 'pending',
+  fetched_at   timestamptz default now(),
+  expires_at   timestamptz,
+  sip_funds    jsonb,
+  insurance    jsonb,
+  ai_summary   text,
+  unique(user_id, risk_profile)
+);
+alter table fire_recommendations enable row level security;
+create policy "own_fire_recs" on fire_recommendations
+  for all using (auth.uid() = user_id);
+
+
+-- 1. Remove the old multi-column constraint that is blocking the upsert
+ALTER TABLE public.portfolio_analysis 
+DROP CONSTRAINT IF EXISTS portfolio_analysis_user_id_session_id_key;
+
+-- 2. Add the clean unique constraint on user_id
+ALTER TABLE public.portfolio_analysis 
+ADD CONSTRAINT portfolio_analysis_user_id_key UNIQUE (user_id);
+
+-- 3. Ensure the check constraint accepts our values
+ALTER TABLE public.portfolio_analysis 
+DROP CONSTRAINT IF EXISTS portfolio_analysis_overlap_severity_check;
+
+ALTER TABLE public.portfolio_analysis 
+ADD CONSTRAINT portfolio_analysis_overlap_severity_check 
+CHECK (overlap_severity IN ('low', 'medium', 'high'));

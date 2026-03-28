@@ -14,7 +14,7 @@ async def run():
     message = "I am looking for some term insurance. Can you search the web for the latest claim settlement ratio of HDFC Life vs LIC?"
     history = []
     
-    print("Sending message to FinPilot Agent...")
+    print("Sending message to Arthmize AI...")
     try:
         response = await generate_response(message, context, history)
         print("\n=== AI RESPONSE ===")

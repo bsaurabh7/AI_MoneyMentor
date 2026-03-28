@@ -19,14 +19,14 @@ MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 
 client = InferenceClient(api_key=HF_TOKEN)
 
-# Load FinPilot system prompt
-prompt_path = os.path.join(os.path.dirname(__file__), '../src/prompts/finpilot_v3.md')
+# Load Arthmize system prompt
+prompt_path = os.path.join(os.path.dirname(__file__), '../src/prompts/arthmize.md')
 try:
     with open(prompt_path, 'r', encoding='utf-8') as f:
         system_instruction = f.read()
 except FileNotFoundError:
     print(f"WARNING: System prompt not found at {prompt_path}")
-    system_instruction = "You are FinPilot AI, an expert Indian personal finance advisor."
+    system_instruction = "You are Arthmize AI, an expert Indian personal finance advisor."
 
 print(f"Using AI Model: {MODEL_NAME} (HuggingFace Serverless API)")
 
@@ -101,8 +101,15 @@ async def generate_response(message: str, context: dict, history: list):
 
     # 2. Add current context + message
     full_message = f"""
+[SYSTEM INSTRUCTION OVERRIDE - GENERAL HUB MODE]
+You are currently in the General Agent Hub.
+1. Answer the user's personal finance questions using ONLY the [RUNTIME CONTEXT] below. Do not use dummy data.
+2. Provide generalized, conversational guidance. 
+3. DO NOT perform dramatic, multi-step calculations (like full FIRE planning or deep-dive portfolio x-rays). If they ask for those, politely tell them to use your specialized action buttons (SIP, Insurance, Loans, Expenses) instead.
+
 [RUNTIME CONTEXT]
 {json.dumps(context, indent=2)}
+
 [USER MESSAGE]
 {message}
 """
@@ -152,10 +159,11 @@ async def generate_response(message: str, context: dict, history: list):
                     tool_result = {"error": "Tool returned no result"}
                     
                 # Append tool result formatted strictly as OpenAI requires it
+                # Prune to 2000 chars to avoid context overflow or API crashes
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "content": json.dumps(tool_result)
+                    "content": json.dumps(tool_result)[:2000]
                 })
                 
         except Exception as e:

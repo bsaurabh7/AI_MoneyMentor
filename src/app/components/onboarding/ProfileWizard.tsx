@@ -484,7 +484,7 @@ export function ProfileWizard({ onComplete }: ProfileWizardProps) {
             <div className="w-8 h-8 rounded-lg bg-[#6366F1] flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-            <span className="text-white font-bold text-sm">FinPilot</span>
+            <span className="text-white font-bold text-sm">Arthmize</span>
           </div>
 
           <div className="flex flex-col gap-1 flex-1">

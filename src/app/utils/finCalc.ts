@@ -140,7 +140,8 @@ export interface FireInputs {
   retire_age: number;
   annual_income: number;
   monthly_expense: number;
-  current_savings: number;
+  current_savings: number; // Liquid, FD, etc.
+  funds_value: number;     // Mutual Funds, Stocks
   expected_return: number; // e.g. 12 for 12%
 }
 
@@ -161,7 +162,7 @@ export interface FireResponse {
 }
 
 export function calculateFIRE(inputs: FireInputs): FireResponse {
-  const { current_age, retire_age, monthly_expense, current_savings, expected_return } = inputs;
+  const { current_age, retire_age, monthly_expense, current_savings, funds_value, expected_return } = inputs;
   const years = Math.max(1, retire_age - current_age);
   const inflation = 0.06;
   const r_annual = expected_return / 100;
@@ -171,14 +172,18 @@ export function calculateFIRE(inputs: FireInputs): FireResponse {
   const annual_expense_at_retire = monthly_expense * 12 * Math.pow(1 + inflation, years);
   const corpus_needed = annual_expense_at_retire / swr;
 
-  // FV of existing savings
-  const fv_savings = current_savings * Math.pow(1 + r_annual, years);
+  // Total current investable assets
+  const total_current_assets = (current_savings || 0) + (funds_value || 0);
+
+  // FV of existing assets
+  const fv_savings = total_current_assets * Math.pow(1 + r_annual, years);
   const remaining = Math.max(0, corpus_needed - fv_savings);
   const n_months = years * 12;
 
   let sip_per_month = 0;
   if (r_monthly > 0 && n_months > 0) {
-    sip_per_month = (remaining * r_monthly) / (Math.pow(1 + r_monthly, n_months) - 1);
+    // Annuity Due: SIP at beginning of month
+    sip_per_month = (remaining * r_monthly) / ((Math.pow(1 + r_monthly, n_months) - 1) * (1 + r_monthly));
   } else if (n_months > 0) {
     sip_per_month = remaining / n_months;
   }
@@ -197,10 +202,10 @@ export function calculateFIRE(inputs: FireInputs): FireResponse {
     let projected: number;
     if (r_monthly > 0) {
       projected =
-        current_savings * Math.pow(1 + r_monthly, months) +
-        sip_per_month * ((Math.pow(1 + r_monthly, months) - 1) / r_monthly);
+        total_current_assets * Math.pow(1 + r_monthly, months) +
+        sip_per_month * (((Math.pow(1 + r_monthly, months) - 1) / r_monthly) * (1 + r_monthly));
     } else {
-      projected = current_savings + sip_per_month * months;
+      projected = total_current_assets + sip_per_month * months;
     }
     // Required corpus at that age (discounted from retirement)
     const yrs_remaining = years - yr;
@@ -214,7 +219,7 @@ export function calculateFIRE(inputs: FireInputs): FireResponse {
 
   const reasoning =
     feasibility === 'on track'
-      ? `Your FIRE plan looks achievable! With a monthly SIP of ${formatINR(Math.round(sip_per_month))}, you can build a corpus of ${formatCr(Math.round(corpus_needed))} by age ${retire_age}. At your expected return of ${expected_return}%, your current savings of ${formatCr(current_savings)} will also grow significantly. The key is to stay consistent with your SIP and avoid lifestyle inflation. Review your plan every 2 years.`
+      ? `Your FIRE plan looks achievable! With a monthly SIP of ${formatINR(Math.round(sip_per_month))}, you can build a corpus of ${formatCr(Math.round(corpus_needed))} by age ${retire_age}. At your expected return of ${expected_return}%, your total current assets of ${formatCr(total_current_assets)} will also grow significantly. The key is to stay consistent with your SIP and avoid lifestyle inflation. Review your plan every 2 years.`
       : feasibility === 'stretch goal'
       ? `Your FIRE target at age ${retire_age} is ambitious but achievable with discipline. The required SIP of ${formatINR(Math.round(sip_per_month))} is a stretch — consider working 2–3 extra years or increasing your return expectations by investing in equity-heavy funds. Small increments to your SIP every year (step-up SIP) can dramatically improve your trajectory.`
       : `Your FIRE target needs revision. The required SIP of ${formatINR(Math.round(sip_per_month))} is high relative to your income. Consider extending your retirement age by 5 years, reducing expected expenses, or significantly boosting income. Starting with what's comfortable and gradually stepping up is a practical approach.`;

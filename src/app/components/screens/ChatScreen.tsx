@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Mic, RefreshCcw, Bot } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { Send, Mic, RefreshCcw, Bot, Lock } from 'lucide-react';
 import { useChatBot } from '../../hooks/useChatBot';
 import { BotBubble, UserBubble, TypingIndicator } from '../chat/ChatBubble';
 import { ChatTaxCard } from '../chat/ChatTaxCard';
@@ -19,7 +20,8 @@ import { Loader2 } from 'lucide-react';
 const FREE_KEY = 'fp_free_used';
 
 export function ChatScreen() {
-  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
+  const navigate = useNavigate();
+  const { user, profile, loading: authLoading, profileLoading, refreshProfile } = useAuth();
   const [input, setInput] = useState('');
   const [wizardData, setWizardData] = useState<CollectedData | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -46,30 +48,32 @@ export function ChatScreen() {
     }
   }, [user]);
 
-  // Populate wizardData from global profile if it exists
+  // Populate wizardData — DB profile always wins over stale session cache
   useEffect(() => {
-    // Try to load from session storage first to preserve precise progress state
-    const cached = sessionStorage.getItem('finpilot_wizard_data');
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (Object.keys(parsed).length > 0 && !wizardData) {
-          setWizardData(parsed);
-          return;
-        }
-      } catch (e) {
-        console.error('Failed to parse cached wizard data', e);
-      }
-    }
+    if (authLoading || profileLoading) return; // wait for auth to fully resolve
 
+    // Score a CollectedData object by richness (more filled = higher score)
+    const dataScore = (d: CollectedData) => {
+      let s = 0;
+      if (d.income?.base_salary) s += 3;
+      if (d.demographics?.employment_type) s += 2;
+      if (d.demographics?.age) s += 1;
+      if (d.demographics?.city_type) s += 1;
+      if (d.demographics?.marital_status) s += 1;
+      return s;
+    };
+
+    // Build DB-mapped data if the user has a full profile
+    let dbMapped: CollectedData | null = null;
     if (user && profile && profile.annual_income) {
       const p = profile as any;
-      const mapped: CollectedData = {
+      dbMapped = {
         demographics: {
           age: p.date_of_birth ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear() : undefined,
           city_type: p.city_type || undefined,
           employment_type: p.employment_type || undefined,
           marital_status: p.marital_status || undefined,
+          dependents: p.dependents ?? undefined,
         },
         income: {
           base_salary: p.annual_income ?? undefined,
@@ -103,10 +107,29 @@ export function ChatScreen() {
           credit_card_debt: p.credit_card_debt || 0,
         }
       };
-      // Only set wizardData from profile if we don't already have live wizardData
-      setWizardData(prev => prev || mapped);
     }
-  }, [user, profile]);
+
+    // Load session cache as fallback
+    let cachedData: CollectedData | null = null;
+    const cached = sessionStorage.getItem('finpilot_wizard_data');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Object.keys(parsed).length > 0) cachedData = parsed;
+      } catch {
+        sessionStorage.removeItem('finpilot_wizard_data');
+      }
+    }
+
+    // DB data wins when it's at least as rich as the cache
+    if (dbMapped && (!cachedData || dataScore(dbMapped) >= dataScore(cachedData))) {
+      sessionStorage.setItem('finpilot_wizard_data', JSON.stringify(dbMapped));
+      setWizardData(dbMapped);
+    } else if (cachedData) {
+      setWizardData(cachedData);
+    }
+    // If neither — wizard popup will show
+  }, [user, profile, authLoading, profileLoading]);
 
   const [hasUsedFree, setHasUsedFree] = useState(false);
   useEffect(() => {
@@ -135,31 +158,46 @@ export function ChatScreen() {
 
   const handleWizardComplete = async (data: CollectedData) => {
     setWizardData(data);
+    // Write to session immediately so all modules use fresh data
+    sessionStorage.setItem('finpilot_wizard_data', JSON.stringify(data));
+
     if (user) {
-      // Generate a DOY string if age is given to fake date of birth for context, since profile demands Date natively.
-      const dobStr = data.demographics?.age 
-        ? `${new Date().getFullYear() - data.demographics.age}-01-01` 
+      const dobStr = data.demographics?.age
+        ? `${new Date().getFullYear() - data.demographics.age}-01-01`
         : undefined;
-      
+
       try {
+        const sNum = (n: any) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);
+        const sStr = (s: any) => (typeof s === 'string' && s.trim() !== '' ? s : null);
+
         await supabase.from('user_profiles').upsert({
           user_id: user.id,
-          date_of_birth: dobStr,
-          city_type: data.demographics?.city_type,
-          employment_type: data.demographics?.employment_type,
-          marital_status: data.demographics?.marital_status,
-          annual_income: data.income?.base_salary,
-          hra_received: data.income?.hra_received,
-          monthly_expense: data.expenses?.fixed_monthly,
-          rent_paid_monthly: data.expenses?.rent_paid_monthly,
-          deduction_80c: data.assets?.deduction_80c,
-          nps_80ccd: data.assets?.nps_80ccd,
+          date_of_birth: dobStr || null,
+          city_type: sStr(data.demographics?.city_type),
+          employment_type: sStr(data.demographics?.employment_type),
+          marital_status: sStr(data.demographics?.marital_status),
+          annual_income: sNum(data.income?.base_salary),
+          hra_received: sNum(data.income?.hra_received),
+          epf_monthly: sNum(data.income?.epf_monthly),
+          secondary_income_monthly: sNum(data.income?.secondary_income_monthly),
+          passive_income_monthly: sNum(data.income?.passive_income_monthly),
+          monthly_expense: sNum(data.expenses?.fixed_monthly),
+          rent_paid_monthly: sNum(data.expenses?.rent_paid_monthly),
+          health_insurance_premium: sNum(data.expenses?.health_insurance_premium),
+          deduction_80c: sNum(data.assets?.deduction_80c),
+          nps_80ccd: sNum(data.assets?.nps_80ccd),
+          current_savings: sNum(data.assets?.current_savings),
+          emergency_fund: sNum(data.assets?.emergency_fund),
+          monthly_sip: sNum(data.assets?.monthly_sip),
+          total_investments: sNum(data.assets?.total_investments),
+          home_loan_emi: sNum(data.liabilities?.home_loan_emi),
+          credit_card_debt: sNum(data.liabilities?.credit_card_debt),
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
-        
+
         await refreshProfile();
       } catch (err) {
-        console.error("Popup sync failed", err);
+        console.error('Popup sync failed', err);
       }
     }
   };
@@ -199,7 +237,7 @@ export function ChatScreen() {
       )}
 
       {/* ── Chat Panel ─────────────────────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0 border-r border-[#E2E8F0] bg-white lg:max-w-[560px]">
+      <div className="flex flex-col flex-1 min-w-0 border-r border-[#E2E8F0] bg-white lg:max-w-[560px] relative">
         {/* Chat Top Bar */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E2E8F0] flex-shrink-0 bg-white">
           <div className="flex items-center gap-3">
@@ -207,7 +245,7 @@ export function ChatScreen() {
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="text-[#0F172A] font-bold text-sm leading-tight">FinPilot AI</p>
+              <p className="text-[#0F172A] font-bold text-sm leading-tight">Arthmize</p>
               <p className="text-[#94A3B8] text-xs leading-tight">Tax &amp; FIRE Advisor</p>
             </div>
           </div>
@@ -228,7 +266,8 @@ export function ChatScreen() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#F8FAFC]">
+        <div className="flex-1 relative overflow-y-auto px-4 py-4 space-y-4 bg-[#F8FAFC]">
+          
           {messages.map((msg) => {
             if (msg.role === 'user') return <UserBubble key={msg.id} content={msg.content} />;
             if (msg.type === 'typing') return <TypingIndicator key={msg.id} />;
@@ -282,7 +321,7 @@ export function ChatScreen() {
           )}
 
           {/* AI Agent Hub (Permanent Action Buttons) */}
-          {step === 'done' && !showGuestBlur && (
+          {step === 'done' && progress === 100 && !showGuestBlur && (
             <div className="px-4 py-3 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar" style={{ scrollbarWidth: 'none' }}>
               <button onClick={() => askAgent("sip")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#EEF2FF] text-[#4F46E5] text-sm font-semibold hover:bg-[#E0E7FF] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#C7D2FE]">
                 💰 Suggest SIPs
@@ -322,6 +361,25 @@ export function ChatScreen() {
             </button>
           </div>
         </div>
+
+        {/* Profile Lock Overlay (Total Portal Lock) */}
+        {wizardData !== null && progress < 100 && (
+          <div className="absolute inset-0 z-40 bg-[#F8FAFC]/70 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-16 h-16 bg-white shadow-xl border border-[#E2E8F0] text-[#6366F1] rounded-2xl flex items-center justify-center mb-6">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h2 className="text-[#0F172A] text-2xl font-bold mb-3">Profile Incomplete ({progress}%)</h2>
+            <p className="text-[#64748B] max-w-sm mb-6 font-medium">
+              Please complete your financial profile in the "My Profile" tab to unlock AI mentoring and specialized agents.
+            </p>
+            <button
+              onClick={() => navigate('/profile', { state: { editMode: true } })}
+              className="px-8 py-3 rounded-2xl bg-[#6366F1] font-bold text-white shadow-lg hover:bg-[#4F46E5] transform hover:scale-105 transition-all"
+            >
+              Let's Start →
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Summary Panel (desktop only) ────────────────── */}

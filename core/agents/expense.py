@@ -40,7 +40,7 @@ async def analyse_expenses(req: ExpenseRequest):
     health  = expenses.get("health_insurance_premium", 0) / 12
 
     prompt = f"""
-You are FinPilot's Expense Optimiser for India.
+You are Arthmize AI's Expense Optimiser for India.
 
 [USER PROFILE]
 {context_str}
