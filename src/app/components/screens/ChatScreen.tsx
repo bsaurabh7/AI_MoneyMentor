@@ -142,18 +142,21 @@ export function ChatScreen() {
         : undefined;
       
       try {
+        const sNum = (n: any) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0);
+        const sStr = (s: any) => (typeof s === 'string' && s.trim() !== '' ? s : null);
+
         await supabase.from('user_profiles').upsert({
           user_id: user.id,
-          date_of_birth: dobStr,
-          city_type: data.demographics?.city_type,
-          employment_type: data.demographics?.employment_type,
-          marital_status: data.demographics?.marital_status,
-          annual_income: data.income?.base_salary,
-          hra_received: data.income?.hra_received,
-          monthly_expense: data.expenses?.fixed_monthly,
-          rent_paid_monthly: data.expenses?.rent_paid_monthly,
-          deduction_80c: data.assets?.deduction_80c,
-          nps_80ccd: data.assets?.nps_80ccd,
+          date_of_birth: dobStr || null,
+          city_type: sStr(data.demographics?.city_type),
+          employment_type: sStr(data.demographics?.employment_type),
+          marital_status: sStr(data.demographics?.marital_status),
+          annual_income: sNum(data.income?.base_salary),
+          hra_received: sNum(data.income?.hra_received),
+          monthly_expense: sNum(data.expenses?.fixed_monthly),
+          rent_paid_monthly: sNum(data.expenses?.rent_paid_monthly),
+          deduction_80c: sNum(data.assets?.deduction_80c),
+          nps_80ccd: sNum(data.assets?.nps_80ccd),
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
         

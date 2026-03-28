@@ -55,12 +55,25 @@ export function SummaryPanel({ collected, taxResult, fireResult, progress, onSta
             <span className="text-[#374151] text-sm font-medium">Data collected</span>
             <span className="text-[#6366F1] text-sm font-bold">{progress}%</span>
           </div>
-          <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
+          <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden mb-3">
             <div
               className="h-full bg-[#6366F1] rounded-full transition-all duration-700"
               style={{ width: `${progress}%` }}
             />
           </div>
+          {progress < 100 && (
+            <div className="flex items-center justify-between bg-[#EEF2FF] border border-[#C7D2FE] px-3 py-2 rounded-lg">
+              <span className="text-xs text-[#4338CA] font-medium leading-tight max-w-[160px]">
+                Please Complete your profile for better results.
+              </span>
+              <button 
+                onClick={() => window.location.href = '/'} 
+                className="text-[10px] uppercase tracking-wider bg-white text-[#4F46E5] px-2.5 py-1.5 rounded font-bold hover:bg-[#E0E7FF] hover:border-[#6366F1] transition-all border border-[#C7D2FE] shadow-sm ml-2 shrink-0"
+              >
+                Let's Start
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Profile pills */}
