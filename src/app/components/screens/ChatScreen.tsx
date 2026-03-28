@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Mic, RefreshCcw, Bot } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { Send, Mic, RefreshCcw, Bot, Lock } from 'lucide-react';
 import { useChatBot } from '../../hooks/useChatBot';
 import { BotBubble, UserBubble, TypingIndicator } from '../chat/ChatBubble';
 import { ChatTaxCard } from '../chat/ChatTaxCard';
@@ -19,6 +20,7 @@ import { Loader2 } from 'lucide-react';
 const FREE_KEY = 'fp_free_used';
 
 export function ChatScreen() {
+  const navigate = useNavigate();
   const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const [input, setInput] = useState('');
   const [wizardData, setWizardData] = useState<CollectedData | null>(null);
@@ -202,7 +204,7 @@ export function ChatScreen() {
       )}
 
       {/* ── Chat Panel ─────────────────────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0 border-r border-[#E2E8F0] bg-white lg:max-w-[560px]">
+      <div className="flex flex-col flex-1 min-w-0 border-r border-[#E2E8F0] bg-white lg:max-w-[560px] relative">
         {/* Chat Top Bar */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E2E8F0] flex-shrink-0 bg-white">
           <div className="flex items-center gap-3">
@@ -231,7 +233,8 @@ export function ChatScreen() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#F8FAFC]">
+        <div className="flex-1 relative overflow-y-auto px-4 py-4 space-y-4 bg-[#F8FAFC]">
+          
           {messages.map((msg) => {
             if (msg.role === 'user') return <UserBubble key={msg.id} content={msg.content} />;
             if (msg.type === 'typing') return <TypingIndicator key={msg.id} />;
@@ -285,7 +288,7 @@ export function ChatScreen() {
           )}
 
           {/* AI Agent Hub (Permanent Action Buttons) */}
-          {step === 'done' && !showGuestBlur && (
+          {step === 'done' && progress === 100 && !showGuestBlur && (
             <div className="px-4 py-3 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar" style={{ scrollbarWidth: 'none' }}>
               <button onClick={() => askAgent("sip")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#EEF2FF] text-[#4F46E5] text-sm font-semibold hover:bg-[#E0E7FF] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#C7D2FE]">
                 💰 Suggest SIPs
@@ -325,6 +328,25 @@ export function ChatScreen() {
             </button>
           </div>
         </div>
+
+        {/* Profile Lock Overlay (Total Portal Lock) */}
+        {wizardData !== null && progress < 100 && (
+          <div className="absolute inset-0 z-40 bg-[#F8FAFC]/70 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-16 h-16 bg-white shadow-xl border border-[#E2E8F0] text-[#6366F1] rounded-2xl flex items-center justify-center mb-6">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h2 className="text-[#0F172A] text-2xl font-bold mb-3">Profile Incomplete ({progress}%)</h2>
+            <p className="text-[#64748B] max-w-sm mb-6 font-medium">
+              Please complete your financial profile in the "My Profile" tab to unlock AI mentoring and specialized agents.
+            </p>
+            <button
+              onClick={() => navigate('/profile', { state: { editMode: true } })}
+              className="px-8 py-3 rounded-2xl bg-[#6366F1] font-bold text-white shadow-lg hover:bg-[#4F46E5] transform hover:scale-105 transition-all"
+            >
+              Let's Start →
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Summary Panel (desktop only) ────────────────── */}

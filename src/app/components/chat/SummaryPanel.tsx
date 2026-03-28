@@ -1,4 +1,5 @@
 import { CheckCircle, Circle } from 'lucide-react';
+import { useNavigate } from 'react-router';
 import { type TaxResponse, type FireResponse, formatINR, formatCr } from '../../utils/finCalc';
 import { type CollectedData, getSalary, getHRA, get80C, getNPS, getCurrentAge } from '../../hooks/useCollectedData';
 
@@ -32,6 +33,8 @@ const PILLS: PillDef[] = [
 ];
 
 export function SummaryPanel({ collected, taxResult, fireResult, progress, onStartFire }: Props) {
+  const navigate = useNavigate();
+
   return (
     <div className="h-full flex flex-col bg-[#F8FAFC] overflow-hidden relative">
       {/* Progress bar — right edge */}
@@ -67,7 +70,7 @@ export function SummaryPanel({ collected, taxResult, fireResult, progress, onSta
                 Please Complete your profile for better results.
               </span>
               <button 
-                onClick={() => window.location.href = '/'} 
+                onClick={() => navigate('/profile', { state: { editMode: true } })} 
                 className="text-[10px] uppercase tracking-wider bg-white text-[#4F46E5] px-2.5 py-1.5 rounded font-bold hover:bg-[#E0E7FF] hover:border-[#6366F1] transition-all border border-[#C7D2FE] shadow-sm ml-2 shrink-0"
               >
                 Let's Start

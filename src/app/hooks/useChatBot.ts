@@ -267,83 +267,21 @@ export function useChatBot(initialData?: CollectedData) {
     []
   );
 
-  // ── Tax runner (shared by wizard path + chat path) ─────────────────────
-  const runTaxAndAskFire = useCallback(
-    async (data: CollectedData) => {
-      const taxInputs = {
-        salary: getSalary(data),
-        hra_received: getHRA(data),
-        rent_paid: getRent(data),
-        city_type: getCityType(data),
-        deduction_80c: get80C(data),
-        deduction_80d: get80D(data),
-        nps_80ccd: getNPS(data),
-      };
-      const result = calculateTax(taxInputs);
-      setTaxResult(result);
-      await addResultCard('tax_result', result, undefined, 800);
-
-      if (user) {
-        supabase.from('tax_calculations').upsert({
-          user_id: user.id,
-          financial_year: '2024-25',
-          salary: taxInputs.salary,
-          hra_received: taxInputs.hra_received,
-          rent_paid: taxInputs.rent_paid,
-          city_type: taxInputs.city_type,
-          deduction_80c: taxInputs.deduction_80c,
-          deduction_80d: taxInputs.deduction_80d,
-          nps_80ccd: taxInputs.nps_80ccd,
-          old_regime_tax: result.old_regime.total_tax,
-          new_regime_tax: result.new_regime.total_tax,
-          recommended_regime: result.winner === 'new' ? 'new' : 'old',
-          savings_amount: result.savings,
-          ai_reasoning: result.reasoning,
-        }, { onConflict: 'user_id, financial_year' })
-          .then(({ error }) => { if (error) console.error('Tax upsert error:', error); });
-
-        supabase.from('user_profiles').upsert({
-          user_id: user.id,
-          annual_income: taxInputs.salary,
-          hra_received: taxInputs.hra_received,
-          rent_paid_monthly: data.expenses?.rent_paid_monthly ?? 0,
-          city_type: taxInputs.city_type,
-          deduction_80c: taxInputs.deduction_80c,
-          deduction_80d: taxInputs.deduction_80d,
-          nps_80ccd: taxInputs.nps_80ccd,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' })
-          .then(({ error }) => { if (error) console.error('Profile upsert error:', error); });
-      }
-
-      setTimeout(async () => {
-        setStep('ask_fire');
-        const age = data.demographics?.age;
-        await addBotMessage(
-          `Want me to also plan your **FIRE retirement**? 🎯\n\n${age ? `I see you're ${age} years old. Would you like to plan your retirement?` : `Just say yes and I'll build a full corpus and SIP plan for you!`}`,
-          700
-        );
-      }, 400);
-    },
-    [addBotMessage, addResultCard, user]
-  );
-
   // React to wizard data being provided after mount
   useEffect(() => {
     if (initialData?.income?.base_salary && !hasTriggeredRef.current) {
       hasTriggeredRef.current = true;
       setCollected(initialData);
-      setStep('tax_computing');
-      const salary = initialData.income.base_salary;
+      setStep('done');
+      
       setMessages([{
         id: uid(),
         role: 'bot',
         type: 'text',
-        content: `Great! I've got your profile details 👋\n\nRunning your **Tax Analysis** now — calculating Old Regime vs New Regime for your ₹${(salary / 100_000).toFixed(1)}L salary... 🧮`
+        content: `Hello 👋 Welcome to FinPilot AI!\n\nI see you've started setting up your profile. To unlock my specialized AI agents and start getting personalized advice, please complete your data in **My Profile**.`
       }]);
-      setTimeout(() => runTaxAndAskFire(initialData), 1200);
     }
-  }, [initialData, runTaxAndAskFire]);
+  }, [initialData]);
 
   // ── Incremental Profile Auto-Save (Pillar 8) ─────────────────────────
   useEffect(() => {
@@ -494,9 +432,8 @@ export function useChatBot(initialData?: CollectedData) {
           const npsAmt = yesNo === false || /no nps/.test(userText.toLowerCase()) ? 0 : amount ? Math.min(amount, 50000) : 50000;
           newData = { ...newData, assets: { ...newData.assets, nps_80ccd: npsAmt } };
           setCollected(newData);
-          nextStep = 'tax_computing';
-          await addBotMessage('Got all your tax data! Calculating now... 🧮', 600);
-          setTimeout(() => runTaxAndAskFire(newData), 300);
+          nextStep = 'done';
+          await addBotMessage("Great, I've got your basic tax info! Head over to **My Profile** to complete your setup.", 600);
           break;
         }
 
@@ -1078,7 +1015,7 @@ export function useChatBot(initialData?: CollectedData) {
 
       if (nextStep !== currentStep) setStep(nextStep);
     },
-    [addBotMessage, addResultCard, collected, runTaxAndAskFire, user, fundCount, pendingFund]
+    [addBotMessage, addResultCard, collected, user, fundCount, pendingFund]
   );
 
   const sendMessage = useCallback(
