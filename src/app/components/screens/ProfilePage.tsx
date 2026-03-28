@@ -8,6 +8,7 @@ import {
   ArrowRight, Loader2, Compass, Shield, PieChart, AlertTriangle,
   CheckCircle2, XCircle, Clock, Edit3, Save, X
 } from 'lucide-react';
+import { PortfolioSummary } from '../shared/PortfolioSummary';
 
 const bool = (v: boolean | null | undefined) =>
   v === true ? <span className="flex items-center gap-1 text-emerald-600 text-sm font-medium"><CheckCircle2 className="w-4 h-4" />Yes</span>
@@ -315,7 +316,7 @@ export function ProfilePage() {
                 <TrendingUp className="w-4 h-4 text-[#6366F1]" /> Assets &amp; Savings
               </h2>
               <div className="space-y-3">
-                <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Current Savings" icon={<TrendingUp className="w-3.5 h-3.5 opacity-0" />} field="current_savings" valueStr={fmt(data?.current_savings)} colorClass="text-emerald-600" />
+                <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Savings / Cash" icon={<TrendingUp className="w-3.5 h-3.5 opacity-0" />} field="current_savings" valueStr={fmt(data?.current_savings)} colorClass="text-emerald-600" />
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Total Investments" icon={<TrendingUp className="w-3.5 h-3.5 opacity-0" />} field="total_investments" valueStr={fmt(data?.total_investments)} colorClass="text-emerald-600" />
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Monthly SIP" icon={<TrendingUp className="w-3.5 h-3.5 opacity-0" />} field="monthly_sip" valueStr={fmt(data?.monthly_sip)} colorClass="text-blue-600" />
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Emergency Fund" icon={<TrendingUp className="w-3.5 h-3.5 opacity-0" />} field="emergency_fund" valueStr={fmt(data?.emergency_fund)} colorClass="text-emerald-600" />
@@ -323,6 +324,11 @@ export function ProfilePage() {
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="NPS (80CCD 1B)" icon={<TrendingUp className="w-3.5 h-3.5 opacity-0" />} field="nps_80ccd" valueStr={fmt(data?.nps_80ccd)} />
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Expected Return (Decimal, e.g. 0.12)" icon={<TrendingUp className="w-3.5 h-3.5 opacity-0" />} field="expected_return" valueStr={fmtPct(data?.expected_return)} colorClass="text-indigo-600" />
               </div>
+            </div>
+
+            {/* Portfolio Summary (Full Width) */}
+            <div className="md:col-span-2">
+              <PortfolioSummary />
             </div>
 
             {/* Insurance & Health Coverage */}
@@ -367,7 +373,7 @@ export function ProfilePage() {
                   <p className="text-xs text-indigo-600">Continue the AI chat to add your mutual fund portfolio for overlap analysis, expense ratio audit, and rebalancing suggestions.</p>
                 </div>
                 <button
-                  onClick={() => navigate('/chat')}
+                  onClick={() => navigate('/portfolio')}
                   className="shrink-0 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors font-medium"
                 >
                   Add Portfolio →

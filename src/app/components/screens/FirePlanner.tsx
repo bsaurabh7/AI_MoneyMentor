@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -14,6 +14,8 @@ import { MetricCard } from '../shared/MetricCard';
 import { StatusPill } from '../shared/StatusPill';
 import { useAuth } from '../../context/AuthContext';
 import { useFireRecommendations, type LiveSipFund, type LiveInsuranceRec } from '../../hooks/useFireRecommendations';
+import { supabase } from '../../../lib/supabase';
+import { PortfolioSummary } from '../shared/PortfolioSummary';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -156,8 +158,10 @@ function AnalysisBreakdown({ form, result }: { form: FireInputs; result: FireRes
   const savingsRate = form.annual_income > 0
     ? ((result.sip_per_month * 12) / form.annual_income) * 100
     : 0;
-  const fvCurrentSavings = form.current_savings * Math.pow(1 + form.expected_return / 100, result.years_to_retire);
-  const shortfall = Math.max(0, result.corpus_needed - fvCurrentSavings);
+  
+  const totalAssets = (form.current_savings || 0) + (form.funds_value || 0);
+  const fvTotalAssets = totalAssets * Math.pow(1 + form.expected_return / 100, result.years_to_retire);
+  const shortfall = Math.max(0, result.corpus_needed - fvTotalAssets);
 
   const rows = [
     {
@@ -166,8 +170,8 @@ function AnalysisBreakdown({ form, result }: { form: FireInputs; result: FireRes
       note: '6% inflation assumed',
     },
     {
-      label: 'Future value of your current savings',
-      value: formatCr(Math.round(fvCurrentSavings)),
+      label: 'Future value of your current savings & funds',
+      value: formatCr(Math.round(fvTotalAssets)),
       note: `at ${form.expected_return}% p.a. for ${result.years_to_retire} yrs`,
     },
     {
@@ -448,7 +452,8 @@ function LiveInsuranceRecommendations({ recs }: { recs: LiveInsuranceRec[] }) {
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export function FirePlanner() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const [hasSynced, setHasSynced] = useState(false);
 
   // Build initial values from profile
   const profileDefaults = useMemo<FireInputs>(() => {
@@ -459,6 +464,7 @@ export function FirePlanner() {
       annual_income:    profile?.annual_income    ?? 2_400_000,
       monthly_expense:  profile?.monthly_expense  ?? 80_000,
       current_savings:  profile?.current_savings  ?? 1_500_000,
+      funds_value:      0, // Defaults to 0, sync will update it
       expected_return:  profile?.expected_return  ??
         (profile?.risk_profile === 'aggressive' ? 13
           : profile?.risk_profile === 'conservative' ? 9 : 11),
@@ -466,6 +472,29 @@ export function FirePlanner() {
   }, [profile]);
 
   const [form, setForm] = useState<FireInputs>(profileDefaults);
+
+  // Sync with live portfolio total
+  useEffect(() => {
+    async function syncPortfolioTotal() {
+      if (!user || hasSynced) return;
+      try {
+        const { data } = await supabase
+          .from('portfolio_funds')
+          .select('current_value')
+          .eq('user_id', user.id);
+        
+        if (data && data.length > 0) {
+          const totalValue = data.reduce((sum, f) => sum + (f.current_value || 0), 0);
+          setForm(prev => ({ ...prev, funds_value: totalValue }));
+          setHasSynced(true);
+        }
+      } catch (err) {
+        console.error("Portfolio sync error:", err);
+      }
+    }
+    syncPortfolioTotal();
+  }, [user, hasSynced]);
+
   const [result, setResult] = useState<FireResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [whatIfAge, setWhatIfAge] = useState('');
@@ -631,12 +660,21 @@ export function FirePlanner() {
             </div>
 
             <div>
-              <label className={labelClass}>Current Savings (₹)</label>
+              <label className={labelClass}>Liquid Savings / FDs (₹)</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
                 <input type="number" className={`${inputClass} pl-7`} value={form.current_savings} onChange={set('current_savings')} />
               </div>
-              <p className="text-xs text-[#94A3B8] mt-1">Includes FDs, mutual funds, EPF, gold etc.</p>
+              <p className="text-xs text-[#94A3B8] mt-1">Cash, FDs, and other low-risk liquid assets.</p>
+            </div>
+
+            <div>
+              <label className={labelClass}>Mutual Funds & Stocks (₹)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
+                <input type="number" className={`${inputClass} pl-7`} value={form.funds_value} onChange={set('funds_value')} />
+              </div>
+              <p className="text-xs text-[#6366F1] mt-1 font-medium">✨ Pre-filled from your live Portfolio Sync</p>
             </div>
 
             <div>
