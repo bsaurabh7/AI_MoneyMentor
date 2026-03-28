@@ -57,6 +57,14 @@ export type UserProfile = {
   home_loan_interest_annual: number | null;
   credit_card_debt: number | null;
   risk_profile: 'conservative' | 'moderate' | 'aggressive' | null;
+  monthly_sip: number | null;
+  total_investments: number | null;
+  epf_monthly: number | null;
+  has_term_insurance: boolean | null;
+  has_health_insurance: boolean | null;
+  tax_regime_chosen: boolean | null;
+  expected_return: number | null;
+  emergency_months: string | null;
   updated_at: string;
 };
 
