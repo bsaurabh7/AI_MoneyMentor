@@ -5,6 +5,10 @@ import { BotBubble, UserBubble, TypingIndicator } from '../chat/ChatBubble';
 import { ChatTaxCard } from '../chat/ChatTaxCard';
 import { ChatFireCard } from '../chat/ChatFireCard';
 import { SummaryPanel } from '../chat/SummaryPanel';
+import { ChatSIPCard } from '../chat/ChatSIPCard';
+import { ChatInsuranceCard } from '../chat/ChatInsuranceCard';
+import { ChatLoanCard } from '../chat/ChatLoanCard';
+import { ChatExpenseCard } from '../chat/ChatExpenseCard';
 import { ProfileWizard } from '../onboarding/ProfileWizard';
 import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../auth/AuthModal';
@@ -98,7 +102,7 @@ export function ChatScreen() {
 
   const showWizard = !authLoading && wizardData === null && !hasUsedFree;
 
-  const { messages, sendMessage, isTyping, step, collected, taxResult, fireResult, progress, quickReplies } =
+  const { messages, sendMessage, isTyping, step, collected, taxResult, fireResult, progress, quickReplies, askAgent } =
     useChatBot(wizardData ?? undefined);
 
   // Auto-scroll
@@ -210,6 +214,13 @@ export function ChatScreen() {
             if (msg.type === 'text') return <BotBubble key={msg.id} content={msg.content} />;
             if (msg.type === 'tax_result') return <ChatTaxCard key={msg.id} data={msg.data} />;
             if (msg.type === 'fire_result') return <ChatFireCard key={msg.id} data={msg.data} retireAge={msg.retireAge} />;
+            if (msg.type === 'agent_result') {
+              if (msg.agentType === 'sip') return <ChatSIPCard key={msg.id} data={msg.data} />;
+              if (msg.agentType === 'insurance') return <ChatInsuranceCard key={msg.id} data={msg.data} />;
+              if (msg.agentType === 'loan') return <ChatLoanCard key={msg.id} data={msg.data} />;
+              if (msg.agentType === 'expenses') return <ChatExpenseCard key={msg.id} data={msg.data} />;
+              return null;
+            }
             return null;
           })}
           <div ref={chatEndRef} />
@@ -234,7 +245,7 @@ export function ChatScreen() {
           )}
 
           {/* Quick Reply Chips */}
-          {quickReplies.length > 0 && !showGuestBlur && (
+          {step !== 'done' && quickReplies.length > 0 && !showGuestBlur && (
             <div className="px-4 py-2.5 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0">
               {quickReplies.map((chip) => (
                 <button
@@ -246,6 +257,24 @@ export function ChatScreen() {
                   {chip}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* AI Agent Hub (Permanent Action Buttons) */}
+          {step === 'done' && !showGuestBlur && (
+            <div className="px-4 py-3 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar" style={{ scrollbarWidth: 'none' }}>
+              <button onClick={() => askAgent("sip")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#EEF2FF] text-[#4F46E5] text-sm font-semibold hover:bg-[#E0E7FF] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#C7D2FE]">
+                💰 Suggest SIPs
+              </button>
+              <button onClick={() => askAgent("insurance")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#F0FDF4] text-[#16A34A] text-sm font-semibold hover:bg-[#DCFCE7] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#BBF7D0]">
+                🛡️ Do I need insurance?
+              </button>
+              <button onClick={() => askAgent("loan")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#FFF7ED] text-[#EA580C] text-sm font-semibold hover:bg-[#FFEDD5] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#FED7AA]">
+                🏠 Optimize my EMIs
+              </button>
+              <button onClick={() => askAgent("expenses")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#FDF2F8] text-[#DB2777] text-sm font-semibold hover:bg-[#FCE7F3] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#FBCFE8]">
+                📊 Track expenses
+              </button>
             </div>
           )}
 
