@@ -121,6 +121,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email, password, fullName, phone, dateOfBirth,
   }: SignUpOptions): Promise<AuthResult> => {
     try {
+      // Check if user is already signed in (e.g., from OTP verification)
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session && session.user.email === email) {
+        // User is already signed in, update their password and metadata instead of signing up again
+        const { error: updateError } = await supabase.auth.updateUser({
+          password,
+          data: {
+            full_name:     fullName,
+            phone:         phone ?? '',
+            date_of_birth: dateOfBirth ?? '',
+          }
+        });
+        if (updateError) return { error: updateError, success: false, message: updateError.message };
+
+        // Explicitly sync this data to the user_profiles table to be absolutely certain it's stored
+        // The backend trigger already created the row on auth.users insert, so we just UPDATE it.
+        await supabase.from('user_profiles')
+          .update({
+            full_name: fullName,
+            phone: phone ?? '',
+            date_of_birth: dateOfBirth ?? '',
+          })
+          .eq('user_id', session.user.id);
+
+        return { error: null, success: true };
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -170,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { shouldCreateUser: false },
+        options: { shouldCreateUser: true },
       });
       if (error) return { error, success: false, message: error.message };
       return { error: null, success: true, message: 'OTP sent to your email.' };
