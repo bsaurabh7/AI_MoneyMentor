@@ -22,6 +22,7 @@ import {
 } from 'react';
 import type { User, AuthError } from '@supabase/supabase-js';
 import { supabase, type UserProfile } from '../../lib/supabase';
+import { prefetchFireRecs } from '../hooks/useFireRecommendations';
 
 /* ── Types ── */
 interface SignUpOptions {
@@ -71,7 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', userId)
         .limit(1);
       if (!error && data && data.length > 0) {
-        setProfile(data[0] as UserProfile);
+        const p = data[0] as UserProfile;
+        setProfile(p);
+
+        // Background prefetch FIRE recs — fire-and-forget, never throws
+        const age = p.date_of_birth
+          ? new Date().getFullYear() - new Date(p.date_of_birth).getFullYear()
+          : 30;
+        const income = p.annual_income ?? 0;
+        const risk = (p.risk_profile ?? (income >= 2_000_000 ? 'aggressive' : income >= 1_000_000 ? 'moderate' : 'conservative')) as 'aggressive' | 'moderate' | 'conservative';
+        prefetchFireRecs(userId, risk, income, age, p.has_term_insurance ?? false, p.has_health_insurance ?? false);
       }
     } catch {
       // profile may not exist yet for new users
