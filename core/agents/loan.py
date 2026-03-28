@@ -8,21 +8,12 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-import sys
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
-
-import google.generativeai as genai
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Dict, Any, List
 from tools import internet_search, web_scrape
 from agents.context import build_context
 from schemas import LOAN_RESPONSE_SCHEMA
-from dotenv import load_dotenv
-
-load_dotenv(dotenv_path="../../.env")
-genai.configure(api_key=os.getenv("VITE_GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY", ""))
 
 router = APIRouter()
 
@@ -88,7 +79,7 @@ Return ONLY raw JSON. Do not include markdown formatting or backticks.
 
     from agent import model
     try:
-        response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+        response = model.generate_content(prompt)
         return {"text": response.text or '{"context_message": "Unable to fetch loan data right now.", "payoff_strategy_name": "N/A", "total_interest_saved": "N/A", "invest_vs_prepay_recommendation": "N/A", "debts_prioritized": []}'}
     except Exception as e:
         err_msg = str(e).replace('"', "'")

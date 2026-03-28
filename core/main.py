@@ -5,6 +5,11 @@ from typing import List, Dict, Any
 import uvicorn
 from agent import generate_response
 from agents import insurance, sip, loan, expense
+import sys
+import asyncio
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 app = FastAPI(title="Arthmize Agent API", version="3.0")
 

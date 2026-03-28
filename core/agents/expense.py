@@ -7,20 +7,11 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-import sys
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
-
-import google.generativeai as genai
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Dict, Any, List
 from agents.context import build_context
 from schemas import EXPENSE_RESPONSE_SCHEMA
-from dotenv import load_dotenv
-
-load_dotenv(dotenv_path="../../.env")
-genai.configure(api_key=os.getenv("VITE_GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY", ""))
 
 router = APIRouter()
 
@@ -79,7 +70,7 @@ Return ONLY raw JSON. Do not include markdown formatting or backticks.
 
     from agent import model
     try:
-        response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+        response = model.generate_content(prompt)
         return {"text": response.text or '{"context_message": "Unable to analyse expenses right now.", "monthly_net_income": 0, "available_surplus": 0, "budget_breakdown": {"needs_allocated": 0, "wants_allocated": 0, "savings_allocated": 0}, "top_overspend_areas": [], "surplus_increase_actions": [], "surplus_allocation_waterfall": []}'}
     except Exception as e:
         err_msg = str(e).replace('"', "'")

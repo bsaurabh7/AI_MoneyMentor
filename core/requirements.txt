@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-google-generativeai
+huggingface_hub
 playwright
 playwright-stealth
 ddgs
