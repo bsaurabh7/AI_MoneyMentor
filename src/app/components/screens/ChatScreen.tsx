@@ -5,6 +5,10 @@ import { BotBubble, UserBubble, TypingIndicator } from '../chat/ChatBubble';
 import { ChatTaxCard } from '../chat/ChatTaxCard';
 import { ChatFireCard } from '../chat/ChatFireCard';
 import { SummaryPanel } from '../chat/SummaryPanel';
+import { ChatSIPCard } from '../chat/ChatSIPCard';
+import { ChatInsuranceCard } from '../chat/ChatInsuranceCard';
+import { ChatLoanCard } from '../chat/ChatLoanCard';
+import { ChatExpenseCard } from '../chat/ChatExpenseCard';
 import { ProfileWizard } from '../onboarding/ProfileWizard';
 import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../auth/AuthModal';
@@ -15,7 +19,7 @@ import { Loader2 } from 'lucide-react';
 const FREE_KEY = 'fp_free_used';
 
 export function ChatScreen() {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const [input, setInput] = useState('');
   const [wizardData, setWizardData] = useState<CollectedData | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
@@ -25,6 +29,7 @@ export function ChatScreen() {
 
   // Magic Data Reset URL param
   useEffect(() => {
+    // ... no changes here
     const params = new URLSearchParams(window.location.search);
     if (params.get('RemoveData') === 'true' && user) {
       Promise.all([
@@ -43,6 +48,20 @@ export function ChatScreen() {
 
   // Populate wizardData from global profile if it exists
   useEffect(() => {
+    // Try to load from session storage first to preserve precise progress state
+    const cached = sessionStorage.getItem('finpilot_wizard_data');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Object.keys(parsed).length > 0 && !wizardData) {
+          setWizardData(parsed);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to parse cached wizard data', e);
+      }
+    }
+
     if (user && profile && profile.annual_income) {
       const p = profile as any;
       const mapped: CollectedData = {
@@ -84,29 +103,23 @@ export function ChatScreen() {
           credit_card_debt: p.credit_card_debt || 0,
         }
       };
-      setWizardData(mapped);
+      // Only set wizardData from profile if we don't already have live wizardData
+      setWizardData(prev => prev || mapped);
     }
   }, [user, profile]);
 
-  // Check if guest has exhausted their free shot
   const [hasUsedFree, setHasUsedFree] = useState(false);
   useEffect(() => {
-    if (!user && localStorage.getItem(FREE_KEY)) {
-      setHasUsedFree(true);
-    }
+    if (!user && localStorage.getItem(FREE_KEY)) setHasUsedFree(true);
   }, [user]);
 
   const showWizard = !authLoading && wizardData === null && !hasUsedFree;
 
-  const { messages, sendMessage, isTyping, step, collected, taxResult, fireResult, progress, quickReplies } =
+  const { messages, sendMessage, isTyping, step, collected, taxResult, fireResult, progress, quickReplies, askAgent } =
     useChatBot(wizardData ?? undefined);
 
-  // Auto-scroll
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
 
-  // When tax result drops for a guest, mark them as used
   useEffect(() => {
     if (!user && taxResult && !hasUsedFree) {
       localStorage.setItem(FREE_KEY, Date.now().toString());
@@ -116,27 +129,39 @@ export function ChatScreen() {
 
   const showGuestBlur = !user && hasUsedFree && taxResult;
 
-  const handleSend = () => {
-    if (!input.trim() || isTyping) return;
-    sendMessage(input.trim());
-    setInput('');
-    inputRef.current?.focus();
-  };
+  const handleSend = () => { if (!input.trim() || isTyping) return; sendMessage(input.trim()); setInput(''); inputRef.current?.focus(); };
+  const handleKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } };
+  const handleQuickReply = (text: string) => { if (isTyping) return; sendMessage(text); };
 
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleQuickReply = (text: string) => {
-    if (isTyping) return;
-    sendMessage(text);
-  };
-
-  const handleWizardComplete = (data: CollectedData) => {
+  const handleWizardComplete = async (data: CollectedData) => {
     setWizardData(data);
+    if (user) {
+      // Generate a DOY string if age is given to fake date of birth for context, since profile demands Date natively.
+      const dobStr = data.demographics?.age 
+        ? `${new Date().getFullYear() - data.demographics.age}-01-01` 
+        : undefined;
+      
+      try {
+        await supabase.from('user_profiles').upsert({
+          user_id: user.id,
+          date_of_birth: dobStr,
+          city_type: data.demographics?.city_type,
+          employment_type: data.demographics?.employment_type,
+          marital_status: data.demographics?.marital_status,
+          annual_income: data.income?.base_salary,
+          hra_received: data.income?.hra_received,
+          monthly_expense: data.expenses?.fixed_monthly,
+          rent_paid_monthly: data.expenses?.rent_paid_monthly,
+          deduction_80c: data.assets?.deduction_80c,
+          nps_80ccd: data.assets?.nps_80ccd,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        
+        await refreshProfile();
+      } catch (err) {
+        console.error("Popup sync failed", err);
+      }
+    }
   };
 
   return (
@@ -210,6 +235,13 @@ export function ChatScreen() {
             if (msg.type === 'text') return <BotBubble key={msg.id} content={msg.content} />;
             if (msg.type === 'tax_result') return <ChatTaxCard key={msg.id} data={msg.data} />;
             if (msg.type === 'fire_result') return <ChatFireCard key={msg.id} data={msg.data} retireAge={msg.retireAge} />;
+            if (msg.type === 'agent_result') {
+              if (msg.agentType === 'sip') return <ChatSIPCard key={msg.id} data={msg.data} />;
+              if (msg.agentType === 'insurance') return <ChatInsuranceCard key={msg.id} data={msg.data} />;
+              if (msg.agentType === 'loan') return <ChatLoanCard key={msg.id} data={msg.data} />;
+              if (msg.agentType === 'expenses') return <ChatExpenseCard key={msg.id} data={msg.data} />;
+              return null;
+            }
             return null;
           })}
           <div ref={chatEndRef} />
@@ -234,7 +266,7 @@ export function ChatScreen() {
           )}
 
           {/* Quick Reply Chips */}
-          {quickReplies.length > 0 && !showGuestBlur && (
+          {step !== 'done' && quickReplies.length > 0 && !showGuestBlur && (
             <div className="px-4 py-2.5 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0">
               {quickReplies.map((chip) => (
                 <button
@@ -246,6 +278,24 @@ export function ChatScreen() {
                   {chip}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* AI Agent Hub (Permanent Action Buttons) */}
+          {step === 'done' && !showGuestBlur && (
+            <div className="px-4 py-3 bg-white border-t border-[#F1F5F9] flex gap-2 overflow-x-auto flex-shrink-0 hide-scrollbar" style={{ scrollbarWidth: 'none' }}>
+              <button onClick={() => askAgent("sip")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#EEF2FF] text-[#4F46E5] text-sm font-semibold hover:bg-[#E0E7FF] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#C7D2FE]">
+                💰 Suggest SIPs
+              </button>
+              <button onClick={() => askAgent("insurance")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#F0FDF4] text-[#16A34A] text-sm font-semibold hover:bg-[#DCFCE7] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#BBF7D0]">
+                🛡️ Do I need insurance?
+              </button>
+              <button onClick={() => askAgent("loan")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#FFF7ED] text-[#EA580C] text-sm font-semibold hover:bg-[#FFEDD5] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#FED7AA]">
+                🏠 Optimize my EMIs
+              </button>
+              <button onClick={() => askAgent("expenses")} disabled={isTyping} className="flex-shrink-0 px-4 py-2 rounded-xl bg-[#FDF2F8] text-[#DB2777] text-sm font-semibold hover:bg-[#FCE7F3] transition-colors whitespace-nowrap disabled:opacity-50 border border-[#FBCFE8]">
+                📊 Track expenses
+              </button>
             </div>
           )}
 

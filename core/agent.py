@@ -1,95 +1,167 @@
+"""
+agent.py — Central LLM Client (HuggingFace Inference Interface)
+Uses the free huggingface_hub Inference API with Qwen2.5-7B-Instruct.
+Supports full OpenAI-compatible tool use (internet search, web scrape).
+"""
 import os
 import json
-import asyncio
-import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool
+from huggingface_hub import InferenceClient
 from tools import internet_search, web_scrape
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path="../.env")
 
-api_key = os.getenv("VITE_GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY")
-if not api_key:
-    print("WARNING: Google API Key is missing. Make sure VITE_GOOGLE_API_KEY is in .env")
-else:
-    genai.configure(api_key=api_key)
+# HuggingFace standard fine-grained/WRITE token that allows serverless inference
+HF_TOKEN = os.getenv("HF_FINEGRAINED_TOKEN") or os.getenv("HF_WRITE_TOKEN") or os.getenv("HF_READ_TOKEN")
+if not HF_TOKEN:
+    print("WARNING: HF_FINEGRAINED_TOKEN missing from .env")
+MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 
+client = InferenceClient(api_key=HF_TOKEN)
+
+# Load FinPilot system prompt
 prompt_path = os.path.join(os.path.dirname(__file__), '../src/prompts/finpilot_v3.md')
 try:
     with open(prompt_path, 'r', encoding='utf-8') as f:
         system_instruction = f.read()
 except FileNotFoundError:
     print(f"WARNING: System prompt not found at {prompt_path}")
-    system_instruction = "You are FinPilot AI."
+    system_instruction = "You are FinPilot AI, an expert Indian personal finance advisor."
 
-internet_search_tool = FunctionDeclaration(
-    name="internet_search",
-    description="Search the internet via DDGS to get live data, rates, insurance plans, mutual funds, or news. Returns top 5 results.",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "query": {"type": "STRING", "description": "The precise search query. e.g top term insurance claim settlement ratio 2025 India"}
-        },
-        "required": ["query"]
+print(f"Using AI Model: {MODEL_NAME} (HuggingFace Serverless API)")
+
+# ── Function Tools Schema ──────────────────────────────────────────────────
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "internet_search",
+            "description": "Search the internet via DDGS to get live data, rates, insurance plans, mutual funds, or news.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_scrape",
+            "description": "Scrape a specific URL using Playwright and return its text content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to scrape"}
+                },
+                "required": ["url"]
+            }
+        }
     }
-)
+]
 
-web_scrape_tool = FunctionDeclaration(
-    name="web_scrape",
-    description="Use Playwright to scrape the text content of a specific URL, usually found via internet_search.",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "url": {"type": "STRING", "description": "The absolute URL to scrape"}
-        },
-        "required": ["url"]
-    }
-)
+# ── Simple Model Wrapper for Specialized Agents ──────────────────────────────
+class HuggingFaceResponse:
+    def __init__(self, text: str):
+        self.text = text
 
-tools = Tool(function_declarations=[internet_search_tool, web_scrape_tool])
 
-model = genai.GenerativeModel(
-    model_name='gemini-1.5-flash',
-    system_instruction=system_instruction,
-    tools=[tools]
-)
+class HuggingFaceModel:
+    """Drop-in model object so all agents can call model.generate_content(prompt) easily."""
+    def generate_content(self, prompt: str) -> HuggingFaceResponse:
+        messages = [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}
+        ]
+        try:
+            resp = client.chat_completion(
+                model=MODEL_NAME,
+                messages=messages,
+                max_tokens=4096
+            )
+            content = resp.choices[0].message.content or ""
+            return HuggingFaceResponse(content)
+        except Exception as e:
+            raise e
 
-def parse_history(js_history):
-    formatted = []
-    for msg in js_history:
-        # Avoid putting function call / tool result msgs blindly if they mismatch the strict expected alternating pattern
-        role = "user" if msg.get("role") == "user" else "model"
-        formatted.append({"role": role, "parts": [msg.get("content", "")]})
-    return formatted
+model = HuggingFaceModel()
 
+
+# ── Agentic chat loop for the main Chat Engine (/api/chat) ───────────────────
 async def generate_response(message: str, context: dict, history: list):
-    formatted_history = parse_history(history)
     
-    chat = model.start_chat(history=formatted_history)
+    # 1. Format conversation history using system + previous turns
+    messages = [{"role": "system", "content": system_instruction}]
     
+    for msg in history:
+        role = "user" if msg.get("role") == "user" else "assistant"
+        messages.append({"role": role, "content": msg.get("content", "")})
+
+    # 2. Add current context + message
     full_message = f"""
 [RUNTIME CONTEXT]
 {json.dumps(context, indent=2)}
 [USER MESSAGE]
 {message}
 """
-    try:
-        response = chat.send_message(full_message)
-        
-        while response.function_calls:
-            fn = response.function_calls[0]
-            print(f"[Agent Toolkit] Using {fn.name}({fn.args})")
+    messages.append({"role": "user", "content": full_message})
+
+    # 3. Handle model interaction and tool execution inside a loop
+    max_tool_loops = 3
+    for _ in range(max_tool_loops):
+        try:
+            resp = client.chat_completion(
+                model=MODEL_NAME,
+                messages=messages,
+                tools=TOOLS,
+                max_tokens=4096
+            )
             
-            tool_result = None
-            if fn.name == "internet_search":
-                tool_result = await internet_search(fn.args["query"])
-            elif fn.name == "web_scrape":
-                tool_result = await web_scrape(fn.args["url"])
+            response_msg = resp.choices[0].message
+            
+            # If the model didn't call any tools, we are done
+            if not response_msg.tool_calls:
+                return {"text": response_msg.content or "Done."}
                 
-            part = {"function_response": {"name": fn.name, "response": {"result": tool_result}}}
-            response = chat.send_message(part)
+            # If tools were called, first append the assistant message so the model knows what it tried
+            messages.append(response_msg)
             
-        return {"text": response.text}
-    except Exception as e:
-        print(f"Generative AI Error: {e}")
-        return {"text": "I'm having a technical issue fetching data right now. Please try again."}
+            # Execute all tools requested in this turn
+            for tool_call in response_msg.tool_calls:
+                fn_name = tool_call.function.name
+                
+                try:
+                    args = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError:
+                    args = {}
+                    
+                print(f"[Agent Toolkit] Using {fn_name}({args})")
+                
+                tool_result = None
+                try:
+                    if fn_name == "internet_search":
+                        tool_result = await internet_search(args.get("query", ""))
+                    elif fn_name == "web_scrape":
+                        tool_result = await web_scrape(args.get("url", ""))
+                except Exception as tool_err:
+                    tool_result = {"error": str(tool_err)}
+
+                if tool_result is None:
+                    tool_result = {"error": "Tool returned no result"}
+                    
+                # Append tool result formatted strictly as OpenAI requires it
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(tool_result)
+                })
+                
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"AI Error: {e}")
+            return {"text": "I'm having a technical issue fetching data right now. Please try again."}
+
+    return {"text": "I reached the maximum number of continuous tool steps. Please try again."}

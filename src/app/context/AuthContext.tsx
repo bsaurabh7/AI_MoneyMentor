@@ -246,6 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    sessionStorage.removeItem('finpilot_wizard_data');
   }, []);
 
   return (

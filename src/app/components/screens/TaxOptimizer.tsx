@@ -1,17 +1,18 @@
-import { useState } from 'react';
-import { CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CheckCircle, AlertCircle, Database } from 'lucide-react';
 import { calculateTax, formatINR, type TaxInputs, type TaxResponse } from '../../utils/finCalc';
 import { AIExplanationCard } from '../shared/AIExplanationCard';
 import { StatusPill } from '../shared/StatusPill';
+import { useAuth } from '../../context/AuthContext';
 
-const INITIAL: TaxInputs = {
-  salary: 1800000,
-  hra_received: 360000,
-  rent_paid: 30000,
+const EMPTY: TaxInputs = {
+  salary: 0,
+  hra_received: 0,
+  rent_paid: 0,
   city_type: 'metro',
-  deduction_80c: 150000,
-  deduction_80d: 25000,
-  nps_80ccd: 50000,
+  deduction_80c: 0,
+  deduction_80d: 0,
+  nps_80ccd: 0,
 };
 
 function TaxBreakdown({ data, label, isWinner }: { data: TaxResponse['old_regime']; label: string; isWinner: boolean }) {
@@ -53,10 +54,33 @@ function TaxBreakdown({ data, label, isWinner }: { data: TaxResponse['old_regime
 }
 
 export function TaxOptimizer() {
-  const [form, setForm] = useState<TaxInputs>(INITIAL);
+  const { user, profile } = useAuth();
+  const [form, setForm] = useState<TaxInputs>(EMPTY);
   const [result, setResult] = useState<TaxResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [dataSource, setDataSource] = useState<'profile' | 'partial' | 'empty'>('empty');
+
+  // Pre-fill from Supabase profile whenever it loads
+  useEffect(() => {
+    if (!profile) return;
+    const p = profile as any;
+    const fromDb: TaxInputs = {
+      salary:        p.annual_income      ?? 0,
+      hra_received:  p.hra_received       ?? 0,
+      rent_paid:     p.rent_paid_monthly  ?? 0,
+      city_type:     p.city_type          ?? 'metro',
+      deduction_80c: p.deduction_80c      ?? 0,
+      deduction_80d: p.deduction_80d      ?? 0,
+      nps_80ccd:     p.nps_80ccd          ?? 0,
+    };
+    setForm(fromDb);
+    const hasSalary = !!fromDb.salary;
+    const hasDeductions = fromDb.deduction_80c > 0 || fromDb.deduction_80d > 0 || fromDb.nps_80ccd > 0;
+    if (hasSalary && hasDeductions) setDataSource('profile');
+    else if (hasSalary)             setDataSource('partial');
+    else                            setDataSource('empty');
+  }, [profile]);
 
   const set = (k: keyof TaxInputs) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const val = e.target.type === 'number' ? Number(e.target.value) : e.target.value;
@@ -70,10 +94,7 @@ export function TaxOptimizer() {
     }
     setError('');
     setLoading(true);
-    setTimeout(() => {
-      setResult(calculateTax(form));
-      setLoading(false);
-    }, 600);
+    setTimeout(() => { setResult(calculateTax(form)); setLoading(false); }, 600);
   };
 
   const inputClass =
@@ -88,29 +109,48 @@ export function TaxOptimizer() {
         <p className="text-[#64748B] text-sm mt-1">Find which tax regime saves you more money</p>
       </div>
 
+      {/* Data Source Status Banner */}
+      {user && (
+        <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-medium border ${
+          dataSource === 'profile' ? 'bg-[#D1FAE5] border-[#6EE7B7] text-[#065F46]' :
+          dataSource === 'partial' ? 'bg-[#FEF3C7] border-[#FCD34D] text-[#92400E]' :
+                                     'bg-[#FEE2E2] border-[#FCA5A5] text-[#991B1B]'
+        }`}>
+          {dataSource === 'profile' && <><Database className="w-4 h-4 flex-shrink-0" /> Loaded from your profile — review and click Analyze</>}
+          {dataSource === 'partial' && <><AlertCircle className="w-4 h-4 flex-shrink-0" /> Some fields are missing — fill them in below</>}
+          {dataSource === 'empty'   && <><AlertCircle className="w-4 h-4 flex-shrink-0" /> No profile data found — complete the chat first or enter values manually</>}
+        </div>
+      )}
+
       {/* Input Card */}
       <div className="bg-white border border-[#E2E8F0] rounded-xl p-6">
         <h3 className="text-[#0F172A] font-semibold text-base mb-4">Your income &amp; deductions</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Annual Salary (₹)</label>
+            <label className={labelClass}>
+              Annual Salary (₹){' '}
+              {!form.salary && <span className="text-amber-500 text-xs font-normal ml-1">Required</span>}
+            </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
-              <input type="number" className={`${inputClass} pl-7`} value={form.salary} onChange={set('salary')} placeholder="1800000" />
+              <input type="number" className={`${inputClass} pl-7 ${!form.salary ? 'border-amber-300 focus:border-amber-400' : ''}`}
+                value={form.salary || ''} onChange={set('salary')} placeholder="e.g. 1800000" />
             </div>
           </div>
           <div>
             <label className={labelClass}>HRA Received (₹)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
-              <input type="number" className={`${inputClass} pl-7`} value={form.hra_received} onChange={set('hra_received')} placeholder="360000" />
+              <input type="number" className={`${inputClass} pl-7`} value={form.hra_received || ''}
+                onChange={set('hra_received')} placeholder="0 if not applicable" />
             </div>
           </div>
           <div>
             <label className={labelClass}>Rent Paid per month (₹)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
-              <input type="number" className={`${inputClass} pl-7`} value={form.rent_paid} onChange={set('rent_paid')} placeholder="30000" />
+              <input type="number" className={`${inputClass} pl-7`} value={form.rent_paid || ''}
+                onChange={set('rent_paid')} placeholder="0 if you own home" />
             </div>
           </div>
           <div>
@@ -124,38 +164,36 @@ export function TaxOptimizer() {
             <label className={labelClass}>80C Deductions (₹ max 1.5L)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
-              <input type="number" className={`${inputClass} pl-7`} value={form.deduction_80c} onChange={set('deduction_80c')} max={150000} placeholder="150000" />
+              <input type="number" className={`${inputClass} pl-7`} value={form.deduction_80c || ''}
+                onChange={set('deduction_80c')} max={150000} placeholder="0 if none" />
             </div>
-            {form.deduction_80c > 150000 && (
-              <p className="text-[#EF4444] text-xs mt-1">Max limit is ₹1,50,000</p>
-            )}
+            {form.deduction_80c > 150000 && <p className="text-[#EF4444] text-xs mt-1">Max limit is ₹1,50,000</p>}
           </div>
           <div>
             <label className={labelClass}>80D Health Insurance (₹ max 25K)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
-              <input type="number" className={`${inputClass} pl-7`} value={form.deduction_80d} onChange={set('deduction_80d')} max={25000} placeholder="25000" />
+              <input type="number" className={`${inputClass} pl-7`} value={form.deduction_80d || ''}
+                onChange={set('deduction_80d')} max={25000} placeholder="0 if none" />
             </div>
           </div>
           <div>
             <label className={labelClass}>NPS 80CCD(1B) (₹ max 50K)</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-sm">₹</span>
-              <input type="number" className={`${inputClass} pl-7`} value={form.nps_80ccd} onChange={set('nps_80ccd')} max={50000} placeholder="50000" />
+              <input type="number" className={`${inputClass} pl-7`} value={form.nps_80ccd || ''}
+                onChange={set('nps_80ccd')} max={50000} placeholder="0 if none" />
             </div>
           </div>
         </div>
         {error && <p className="text-[#EF4444] text-sm mt-3">{error}</p>}
-        <button
-          onClick={handleCalculate}
-          disabled={loading}
-          className="mt-5 w-full py-3 rounded-xl bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold text-sm transition-colors disabled:opacity-60"
-        >
-          {loading ? 'Calculating...' : 'Calculate Tax'}
+        <button onClick={handleCalculate} disabled={loading}
+          className="mt-5 w-full py-3 rounded-xl bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold text-sm transition-colors disabled:opacity-60">
+          {loading ? 'Calculating...' : 'Analyze Tax Regimes'}
         </button>
       </div>
 
-      {/* Results */}
+      {/* Loading skeleton */}
       {loading && (
         <div className="flex gap-4">
           {[0, 1].map((i) => (
@@ -163,18 +201,16 @@ export function TaxOptimizer() {
               <div className="h-4 bg-[#F1F5F9] rounded animate-pulse w-1/3" />
               <div className="h-8 bg-[#F1F5F9] rounded animate-pulse w-1/2" />
               <div className="space-y-2 pt-2">
-                {[1, 2, 3, 4, 5].map((j) => (
-                  <div key={j} className="h-3 bg-[#F1F5F9] rounded animate-pulse" />
-                ))}
+                {[1,2,3,4,5].map((j) => <div key={j} className="h-3 bg-[#F1F5F9] rounded animate-pulse" />)}
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {/* Results */}
       {result && !loading && (
         <>
-          {/* Savings Banner */}
           <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#D1FAE5] border border-[#6EE7B7]">
             <CheckCircle className="w-4 h-4 text-[#065F46]" />
             <p className="text-[#065F46] text-sm font-medium">
@@ -182,22 +218,10 @@ export function TaxOptimizer() {
               <strong>{result.winner === 'old' ? 'Old' : 'New'} Regime</strong>
             </p>
           </div>
-
-          {/* Regime Cards */}
           <div className="flex flex-col md:flex-row gap-4">
-            <TaxBreakdown
-              data={result.old_regime}
-              label="Old Regime"
-              isWinner={result.winner === 'old'}
-            />
-            <TaxBreakdown
-              data={result.new_regime}
-              label="New Regime"
-              isWinner={result.winner === 'new'}
-            />
+            <TaxBreakdown data={result.old_regime} label="Old Regime" isWinner={result.winner === 'old'} />
+            <TaxBreakdown data={result.new_regime} label="New Regime" isWinner={result.winner === 'new'} />
           </div>
-
-          {/* AI Card */}
           <AIExplanationCard text={result.reasoning} />
         </>
       )}
