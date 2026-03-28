@@ -179,6 +179,7 @@ alter table public.fire_plans enable row level security;
 alter table public.health_scores enable row level security;
 alter table public.portfolio_funds enable row level security;
 alter table public.portfolio_analysis enable row level security;
+alter table public.tax_calculations add column if not exists city_type text;
 
 -- user_profiles policies
 drop policy if exists "Users can view their own profile" on public.user_profiles;
