@@ -19,8 +19,8 @@ MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 
 client = InferenceClient(api_key=HF_TOKEN)
 
-# Load FinPilot system prompt
-prompt_path = os.path.join(os.path.dirname(__file__), '../src/prompts/finpilot_v3.md')
+# Load Arthmize system prompt
+prompt_path = os.path.join(os.path.dirname(__file__), '../src/prompts/arthmize.md')
 try:
     with open(prompt_path, 'r', encoding='utf-8') as f:
         system_instruction = f.read()
@@ -159,10 +159,11 @@ You are currently in the General Agent Hub.
                     tool_result = {"error": "Tool returned no result"}
                     
                 # Append tool result formatted strictly as OpenAI requires it
+                # Prune to 2000 chars to avoid context overflow or API crashes
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "content": json.dumps(tool_result)
+                    "content": json.dumps(tool_result)[:2000]
                 })
                 
         except Exception as e:

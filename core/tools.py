@@ -1,5 +1,6 @@
 import asyncio
-from playwright.async_api import async_playwright
+import concurrent.futures
+from playwright.sync_api import sync_playwright   # sync API runs fine in a thread
 from ddgs import DDGS
 
 async def internet_search(query: str):
@@ -19,16 +20,20 @@ async def internet_search(query: str):
         print(f"DDGS Error: {e}")
         return []
 
-async def web_scrape(url: str):
-    """Use Playwright to scrape text content from a URL."""
+def _sync_scrape(url: str) -> dict:
+    """
+    Synchronous Playwright scrape — runs inside a ThreadPoolExecutor
+    so it never touches FastAPI's ProactorEventLoop.
+    Uses sync_playwright which spins up its own subprocess separately.
+    """
     print(f"[Playwright] Scraping: {url}")
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
                 headless=True,
                 args=["--disable-blink-features=AutomationControlled"]
             )
-            context = await browser.new_context(
+            context = browser.new_context(
                 viewport={"width": 1920, "height": 1080},
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -36,26 +41,37 @@ async def web_scrape(url: str):
                     "Chrome/120.0.0.0 Safari/537.36"
                 )
             )
-            page = await context.new_page()
+            page = context.new_page()
 
-            async def intercept_route(route):
+            def intercept_route(route):
                 if route.request.resource_type in ["image", "stylesheet", "media", "font"]:
-                    await route.abort()
+                    route.abort()
                 else:
-                    await route.continue_()
+                    route.continue_()
 
-            await page.route("**/*", intercept_route)
-            await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+            page.route("**/*", intercept_route)
+            page.goto(url, wait_until="domcontentloaded", timeout=25000)
 
-            text = await page.evaluate('''() => {
+            text = page.evaluate('''() => {
                 document.querySelectorAll('script, style, noscript, nav, footer').forEach(el => el.remove());
                 return document.body.innerText;
             }''')
 
-            await browser.close()
+            browser.close()
             content = text[:2000].strip() if text else ""
             print(f"[Playwright] Scraped {len(content)} chars from {url}")
             return {"content": content}
     except Exception as e:
         print(f"Scrape Error: {e}")
         return {"error": str(e)}
+
+# Thread pool shared across all scrape calls (max 3 concurrent browsers)
+_scrape_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+
+async def web_scrape(url: str) -> dict:
+    """
+    Async wrapper that runs the sync Playwright scraper in a thread pool.
+    This sidesteps the Windows ProactorEventLoop + Playwright subprocess conflict.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_scrape_executor, _sync_scrape, url)
