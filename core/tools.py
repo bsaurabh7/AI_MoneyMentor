@@ -19,13 +19,25 @@ async def internet_search(query: str):
         print(f"DDGS Error: {e}")
         return {"error": "Search failed"}
 
+from playwright_stealth import stealth
+
 async def web_scrape(url: str):
     """Use Playwright to scrape text content of a single URL."""
     print(f"[Playwright] Scraping: {url}")
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"]
+            )
+            context = await browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = await context.new_page()
+            
+            # Apply stealth
+            await stealth(page)
             
             async def intercept_route(route):
                 if route.request.resource_type in ["image", "stylesheet", "media", "font"]:

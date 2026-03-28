@@ -48,8 +48,21 @@ web_scrape_tool = FunctionDeclaration(
 
 tools = Tool(function_declarations=[internet_search_tool, web_scrape_tool])
 
+def get_best_model():
+    models = genai.list_models()
+    for m in models:
+        if 'gemini' in m.name and 'embedding' not in m.name and 'vision' not in m.name:
+            if 'supported_generation_methods' in dir(m) and 'generateContent' in m.supported_generation_methods:
+                return m.name
+            elif not 'supported_generation_methods' in dir(m):
+                return m.name
+    return 'gemini-1.5-flash' # fallback
+
+model_name = get_best_model()
+print(f"Using Google AI Model: {model_name}")
+
 model = genai.GenerativeModel(
-    model_name='gemini-1.5-flash',
+    model_name=model_name,
     system_instruction=system_instruction,
     tools=[tools]
 )
@@ -76,20 +89,31 @@ async def generate_response(message: str, context: dict, history: list):
     try:
         response = chat.send_message(full_message)
         
-        while response.function_calls:
-            fn = response.function_calls[0]
-            print(f"[Agent Toolkit] Using {fn.name}({fn.args})")
+        while True:
+            # Check for function calls in the parts
+            function_calls = [p.function_call for p in response.parts if getattr(p, 'function_call', None)]
+            if not function_calls:
+                break
+                
+            fn = function_calls[0]
+            print(f"[Agent Toolkit] Using {fn.name}({dict(fn.args)})")
             
             tool_result = None
             if fn.name == "internet_search":
-                tool_result = await internet_search(fn.args["query"])
+                tool_result = await internet_search(fn.args.get("query", ""))
             elif fn.name == "web_scrape":
-                tool_result = await web_scrape(fn.args["url"])
+                tool_result = await web_scrape(fn.args.get("url", ""))
+                
+            if tool_result is None:
+                tool_result = {"error": "Tool returned no result"}
                 
             part = {"function_response": {"name": fn.name, "response": {"result": tool_result}}}
             response = chat.send_message(part)
             
-        return {"text": response.text}
+        text_parts = [p.text for p in response.parts if getattr(p, 'text', None)]
+        return {"text": "\n".join(text_parts) if text_parts else "Done."}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Generative AI Error: {e}")
         return {"text": "I'm having a technical issue fetching data right now. Please try again."}
