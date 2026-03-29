@@ -13,6 +13,7 @@ import { ChatExpenseCard } from '../chat/ChatExpenseCard';
 import { ProfileWizard } from '../onboarding/ProfileWizard';
 import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../auth/AuthModal';
+import { DisclaimerBanner } from '../shared/DisclaimerBanner';
 import { supabase } from '../../../lib/supabase';
 import type { CollectedData } from '../../hooks/useCollectedData';
 import { Loader2 } from 'lucide-react';
@@ -246,7 +247,7 @@ export function ChatScreen() {
             </div>
             <div>
               <p className="text-[#0F172A] font-bold text-sm leading-tight">Arthmize</p>
-              <p className="text-[#94A3B8] text-xs leading-tight">Tax &amp; FIRE Advisor</p>
+              <p className="text-[#94A3B8] text-xs leading-tight">AI Bot!</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -348,7 +349,7 @@ export function ChatScreen() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKey}
-              placeholder="Type your answer..."
+              placeholder="How can I help you"
               disabled={isTyping || showWizard || !!showGuestBlur}
               className="flex-1 px-4 py-2.5 rounded-full bg-[#F1F5F9] text-[#0F172A] text-sm placeholder-[#94A3B8] outline-none focus:bg-white focus:ring-2 focus:ring-[#6366F1]/30 transition-all disabled:opacity-60"
             />
@@ -359,6 +360,10 @@ export function ChatScreen() {
             >
               <Send className="w-4 h-4" />
             </button>
+          </div>
+
+          <div className="px-4 pt-2 pb-0 bg-white border-t border-[#E2E8F0]">
+            <DisclaimerBanner />
           </div>
         </div>
 

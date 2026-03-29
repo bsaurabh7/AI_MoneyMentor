@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -497,6 +497,10 @@ export function FirePlanner() {
 
   const [result, setResult] = useState<FireResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasPlanned, setHasPlanned] = useState(false);
+  const [activeView, setActiveView] = useState<'form' | 'analysis'>('form');
+  const plannerRef = useRef<HTMLDivElement | null>(null);
+  const leftTopAfterPlanRef = useRef(false);
   const [whatIfAge, setWhatIfAge] = useState('');
   const [whatIfResult, setWhatIfResult] = useState<Partial<FireResponse> | null>(null);
 
@@ -505,6 +509,9 @@ export function FirePlanner() {
   };
 
   const handlePlan = () => {
+    setHasPlanned(true);
+    leftTopAfterPlanRef.current = false;
+    setActiveView('analysis');
     setLoading(true);
     setTimeout(() => {
       setResult(calculateFIRE(form));
@@ -512,6 +519,52 @@ export function FirePlanner() {
       setWhatIfResult(null);
     }, 700);
   };
+
+  useEffect(() => {
+    if (!hasPlanned) return;
+    const plannerEl = plannerRef.current;
+    if (!plannerEl) return;
+
+    const findScrollableParent = (start: HTMLElement): HTMLElement | Window => {
+      let node: HTMLElement | null = start.parentElement;
+      while (node) {
+        const { overflowY } = window.getComputedStyle(node);
+        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return window;
+    };
+
+    const scrollHost = findScrollableParent(plannerEl);
+    const getScrollTop = () =>
+      scrollHost === window
+        ? window.scrollY || document.documentElement.scrollTop || 0
+        : (scrollHost as HTMLElement).scrollTop;
+
+    const onScroll = () => {
+      const atTop = getScrollTop() <= 8;
+
+      if (!atTop) {
+        leftTopAfterPlanRef.current = true;
+        setActiveView('analysis');
+        return;
+      }
+
+      if (leftTopAfterPlanRef.current) {
+        setActiveView('form');
+      }
+    };
+
+    if (scrollHost === window) {
+      window.addEventListener('scroll', onScroll, { passive: true });
+      return () => window.removeEventListener('scroll', onScroll);
+    }
+
+    (scrollHost as HTMLElement).addEventListener('scroll', onScroll, { passive: true });
+    return () => (scrollHost as HTMLElement).removeEventListener('scroll', onScroll);
+  }, [hasPlanned]);
 
   const handleWhatIf = () => {
     const age = parseInt(whatIfAge);
@@ -584,7 +637,7 @@ export function FirePlanner() {
   const profileFilled = !!profile;
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-6xl">
+    <div ref={plannerRef} className="p-6 md:p-8 space-y-6 max-w-6xl">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -599,11 +652,19 @@ export function FirePlanner() {
         )}
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col gap-6">
         {/* LEFT — Inputs */}
-        <div className="lg:w-[380px] flex-shrink-0">
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4 sticky top-6">
+        <div className="w-full">
+          <div
+            className={`bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4 transform transition-all duration-500 ease-out ${
+              hasPlanned && activeView === 'analysis'
+                ? '-translate-x-8 opacity-0 max-h-0 overflow-hidden pointer-events-none p-0 border-transparent'
+                : 'translate-x-0 opacity-100 max-h-[2200px]'
+            }`}
+          >
             <h3 className="text-[#0F172A] font-semibold text-base">Your retirement inputs</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
             <div>
               <label className={labelClass}>Current Age</label>
@@ -617,7 +678,7 @@ export function FirePlanner() {
               />
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <div className="flex items-center justify-between mb-1.5">
                 <label className={`${labelClass} mb-0`}>Target Retire Age</label>
                 <span className="bg-[#6366F1] text-white text-xs font-semibold px-2.5 py-1 rounded-full">
@@ -677,7 +738,7 @@ export function FirePlanner() {
               <p className="text-xs text-[#6366F1] mt-1 font-medium">✨ Pre-filled from your live Portfolio Sync</p>
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <div className="flex items-center justify-between mb-1.5">
                 <label className={`${labelClass} mb-0`}>Expected Return (p.a.)</label>
                 <span className="bg-[#6366F1] text-white text-xs font-semibold px-2.5 py-1 rounded-full">
@@ -699,24 +760,34 @@ export function FirePlanner() {
               </div>
             </div>
 
-            <button
-              onClick={handlePlan}
-              disabled={loading}
-              className="w-full py-3 rounded-xl bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold text-sm transition-colors disabled:opacity-60"
-            >
-              {loading ? 'Calculating…' : 'Plan my retirement →'}
-            </button>
+            <div className="md:col-span-2">
+              <button
+                onClick={handlePlan}
+                disabled={loading}
+                className="w-full py-3 rounded-xl bg-[#6366F1] hover:bg-[#4F46E5] text-white font-semibold text-sm transition-colors disabled:opacity-60"
+              >
+                {loading ? 'Calculating…' : 'Plan my retirement →'}
+              </button>
+            </div>
 
             {!profileFilled && (
-              <p className="text-[#94A3B8] text-xs text-center">
+              <p className="md:col-span-2 text-[#94A3B8] text-xs text-center">
                 💡 Complete your profile in chat to auto-fill these fields
               </p>
             )}
+            </div>
           </div>
+
         </div>
 
         {/* RIGHT — Results */}
-        <div className="flex-1 space-y-5">
+        <div
+          className={`flex-1 space-y-5 transform transition-all duration-500 ease-out ${
+            hasPlanned && activeView === 'form'
+              ? 'opacity-0 translate-y-5 max-h-0 overflow-hidden pointer-events-none'
+              : 'opacity-100 translate-y-0 max-h-[10000px]'
+          }`}
+        >
           {loading && (
             <div className="space-y-4">
               <div className="flex gap-3">
@@ -914,14 +985,7 @@ export function FirePlanner() {
             </>
           )}
 
-          {!result && !loading && (
-            <div className="flex flex-col items-center justify-center h-64 bg-white border border-[#E2E8F0] rounded-xl text-center px-6">
-              <div className="w-12 h-12 rounded-full bg-[#EEF2FF] flex items-center justify-center mb-3">
-                <span className="text-2xl">🔥</span>
-              </div>
-              <p className="text-[#64748B] text-sm">Fill in your retirement inputs and click <strong>Plan my retirement</strong> to see your FIRE projection, analysis breakdown, and fund recommendations.</p>
-            </div>
-          )}
+          {!result && !loading && null}
         </div>
       </div>
     </div>
