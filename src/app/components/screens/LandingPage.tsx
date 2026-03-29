@@ -51,15 +51,24 @@ export function LandingPage() {
 
         {/* Nav Links — hidden on mobile */}
         <div className="hidden md:flex items-center gap-8">
-          {['Features', 'How it works', 'About'].map((link) => (
-            <a
-              key={link}
-              href={`#${link.toLowerCase().replace(/\s+/g, '-')}`}
-              className="text-[#94A3B8] text-sm hover:text-white transition-colors"
-            >
-              {link}
-            </a>
-          ))}
+          <a
+            href="#features"
+            className="text-[#94A3B8] text-sm hover:text-white transition-colors"
+          >
+            Features
+          </a>
+          <a
+            href="#how-it-works"
+            className="text-[#94A3B8] text-sm hover:text-white transition-colors"
+          >
+            How it works
+          </a>
+          <button
+            onClick={() => navigate('/about')}
+            className="text-[#94A3B8] text-sm hover:text-white transition-colors"
+          >
+            About
+          </button>
         </div>
 
         {/* CTA Buttons */}
@@ -395,14 +404,23 @@ export function LandingPage() {
             <span className="text-white font-bold">Arthmize</span>
           </div>
           <p className="text-[#475569] text-xs text-center md:text-left">
-            Not a SEBI-registered advisor. For informational use only.
+            The content provided on this website is for informational and educational purposes only and should not be construed as investment, financial, tax, or legal advice.
           </p>
         </div>
         <div className="flex items-center gap-6">
-          {['Privacy', 'Terms', 'Contact'].map((link) => (
-            <a key={link} href="#" className="text-[#64748B] text-sm hover:text-[#94A3B8] transition-colors">
-              {link}
-            </a>
+          {[
+            { label: 'About', path: '/about' },
+            { label: 'Privacy', path: '/privacy' },
+            { label: 'Terms', path: '/terms' },
+            { label: 'Contact', path: '/contact' },
+          ].map((link) => (
+            <button
+              key={link.label}
+              onClick={() => navigate(link.path)}
+              className="text-[#64748B] text-sm hover:text-[#94A3B8] transition-colors"
+            >
+              {link.label}
+            </button>
           ))}
         </div>
       </footer>

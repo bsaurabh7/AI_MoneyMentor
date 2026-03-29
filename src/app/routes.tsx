@@ -7,6 +7,11 @@ import { FirePlanner } from './components/screens/FirePlanner';
 import { MoneyHealth } from './components/screens/MoneyHealth';
 import { PortfolioXRay } from './components/screens/PortfolioXRay';
 import { ProfilePage } from './components/screens/ProfilePage';
+import { SettingsPage } from './components/screens/SettingsPage';
+import { PrivacyPage } from './components/screens/PrivacyPage';
+import { TermsPage } from './components/screens/TermsPage';
+import { ContactPage } from './components/screens/ContactPage';
+import { AboutPage } from './components/screens/AboutPage';
 import { UIEffects } from './components/UIEffects';
 import { Outlet } from 'react-router';
 
@@ -28,6 +33,22 @@ export const router = createBrowserRouter([
         path: '/',
         Component: LandingPage,
       },
+      {
+        path: '/privacy',
+        Component: PrivacyPage,
+      },
+      {
+        path: '/terms',
+        Component: TermsPage,
+      },
+      {
+        path: '/contact',
+        Component: ContactPage,
+      },
+      {
+        path: '/about',
+        Component: AboutPage,
+      },
       // App — sidebar layout
       {
         Component: Root,
@@ -38,6 +59,7 @@ export const router = createBrowserRouter([
           { path: 'health', Component: MoneyHealth },
           { path: 'portfolio', Component: PortfolioXRay },
           { path: 'profile', Component: ProfilePage },
+          { path: 'settings', Component: SettingsPage },
         ],
       },
     ],
