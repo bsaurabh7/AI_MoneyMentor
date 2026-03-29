@@ -6,7 +6,6 @@ import {
   BarChart3,
   Compass,
   Settings,
-  AlertTriangle,
   Menu,
   X,
   MessageCircle,
@@ -34,6 +33,7 @@ const pageTitles: Record<string, string> = {
   '/fire': 'FIRE Planner',
   '/health': 'Money Health Score',
   '/portfolio': 'MF Portfolio X-Ray',
+  '/settings': 'Settings',
 };
 
 // Mobile bottom nav height in px (used to offset chat input)
@@ -63,13 +63,6 @@ export function Root() {
     user?.email?.split('@')[0] ||
     'User';
 
-  const initials = displayName
-    .split(' ')
-    .map((w: string) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
@@ -98,10 +91,7 @@ export function Root() {
         </div>
 
         {/* User Greeting */}
-        <div className="flex items-center gap-3 px-6 py-4">
-          <div className="w-8 h-8 rounded-full bg-[#6366F1] flex items-center justify-center text-white text-sm font-bold">
-            {initials}
-          </div>
+        <div className="flex items-center px-6 py-4">
           <span className="text-[#94A3B8] text-sm truncate">Hello, {displayName.split(' ')[0]}</span>
         </div>
 
@@ -151,7 +141,7 @@ export function Root() {
 
         {/* Bottom */}
         <div className="px-6 py-5 border-t border-white/10">
-          <button className="flex items-center gap-2 text-[#64748B] hover:text-[#94A3B8] text-sm transition-colors">
+          <button onClick={() => navigate('/settings')} className="flex items-center gap-2 text-[#64748B] hover:text-[#94A3B8] text-sm transition-colors">
             <Settings className="w-4 h-4" />
             Settings
           </button>
@@ -181,10 +171,7 @@ export function Root() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex items-center gap-3 px-6 py-4">
-              <div className="w-8 h-8 rounded-full bg-[#6366F1] flex items-center justify-center text-white text-sm font-bold">
-                {initials}
-              </div>
+            <div className="flex items-center px-6 py-4">
               <span className="text-[#94A3B8] text-sm">Hello, {displayName.split(' ')[0]}</span>
             </div>
             <nav className="flex-1 px-3 space-y-1 mt-1">
@@ -222,6 +209,15 @@ export function Root() {
                 );
               })}
             </nav>
+            <div className="px-6 py-4 border-t border-white/10">
+              <button
+                onClick={() => { setMobileOpen(false); navigate('/settings'); }}
+                className="flex items-center gap-2 text-[#64748B] hover:text-[#94A3B8] text-sm transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                Settings
+              </button>
+            </div>
           </aside>
         </div>
       )}
@@ -236,10 +232,6 @@ export function Root() {
                 <Menu className="w-5 h-5" />
               </button>
               <h1 className="text-[#0F172A] font-semibold text-lg">{pageTitle}</h1>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#FFFBEB] border border-[#FCD34D]">
-              <AlertTriangle className="w-3.5 h-3.5 text-[#92400E]" />
-              <span className="text-[#92400E] text-xs font-medium">Not financial advice</span>
             </div>
           </header>
         )}

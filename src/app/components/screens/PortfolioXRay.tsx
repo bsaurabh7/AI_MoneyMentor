@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, TrendingUp, Save, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, Save, CheckCircle2, Info } from 'lucide-react';
 import { analyzePortfolio, formatINR, formatCr, type Fund, type PortfolioResponse } from '../../utils/finCalc';
 import { AIExplanationCard } from '../shared/AIExplanationCard';
 import { MetricCard } from '../shared/MetricCard';
@@ -26,6 +26,59 @@ const CATEGORY_COLORS: Record<string, string> = {
   international: '#EC4899',
 };
 
+const HINTS = {
+  sipAmount: 'Monthly SIP amount invested in a fund. Example: 5000 means you invest Rs 5000 every month.',
+  sipStart: 'Month when SIP started. Used to estimate invested value and return timeline.',
+  category: 'Fund category helps allocation analysis and diversification checks.',
+  currentValue: 'Estimated current value fetched via sync from backend data/scraper.',
+  xirr: 'XIRR is annualized portfolio return considering cash-flow timing.',
+  expenseRatio: 'Average annual management cost across your funds. Lower is generally better.',
+  vsNifty: 'Difference between your portfolio XIRR and benchmark Nifty 50 return.',
+  overlapSeverity: 'How much your funds hold similar stocks. Higher overlap means lower diversification.',
+  overlapHeatmap: 'Pair-wise overlap percentage between funds. High overlap indicates concentration risk.',
+  allocation: 'How your portfolio is distributed by category (Large Cap, Debt, etc).',
+  rebalance: 'Rebalancing resets category weights to your intended targets and risk profile.',
+};
+
+const TABLE_COLUMNS = [
+  { key: 'fund', label: 'Fund Name', className: 'min-w-[260px]' },
+  { key: 'sip', label: 'SIP Amount (₹)', className: 'min-w-[145px]' },
+  { key: 'start', label: 'SIP Start', className: 'min-w-[245px]' },
+  { key: 'cat', label: 'Category', className: 'min-w-[140px]' },
+  { key: 'exp', label: 'Expense Ratio %', className: 'min-w-[130px]' },
+  { key: 'exit', label: 'Exit Load %', className: 'min-w-[120px]' },
+  { key: 'curr', label: 'Est. Curr. Value', className: 'min-w-[145px]' },
+  { key: 'gain', label: 'Total Gain', className: 'min-w-[140px]' },
+  { key: 'actions', label: '', className: 'w-8' },
+] as const;
+
+function HintIcon({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:text-[#6366F1] cursor-help"
+    >
+      <Info className="w-3.5 h-3.5" />
+    </span>
+  );
+}
+
+const MONTH_OPTIONS = [
+  { value: '01', label: 'Jan' },
+  { value: '02', label: 'Feb' },
+  { value: '03', label: 'Mar' },
+  { value: '04', label: 'Apr' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'Jun' },
+  { value: '07', label: 'Jul' },
+  { value: '08', label: 'Aug' },
+  { value: '09', label: 'Sep' },
+  { value: '10', label: 'Oct' },
+  { value: '11', label: 'Nov' },
+  { value: '12', label: 'Dec' },
+];
+
 // Start with empty funds
 const INITIAL_FUNDS: Fund[] = [];
 
@@ -36,7 +89,9 @@ async function fetchCurrentValuesFromScraper(funds: Fund[]): Promise<Fund[]> {
       name: f.name,
       sip_amount: f.sip_amount,
       sip_start_date: f.sip_start_date,
-      category: f.category
+      category: f.category,
+      expense_ratio_pct: f.expense_ratio_pct ?? 0,
+      exit_load_pct: f.exit_load_pct ?? 0,
     }));
 
     const res = await fetch('http://localhost:8000/api/agents/mf-analyzer/fetch', {
@@ -61,6 +116,22 @@ async function fetchCurrentValuesFromScraper(funds: Fund[]): Promise<Fund[]> {
     console.error('MF Scraper API failed:', err);
     throw err;
   }
+}
+
+function calcSIPContributedTillDate(sipAmount: number, sipStartDate: string): number {
+  if (!sipAmount || sipAmount <= 0 || !sipStartDate) return 0;
+
+  const [yearStr, monthStr] = sipStartDate.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (!year || !month) return 0;
+
+  const start = new Date(year, month - 1, 1);
+  const now = new Date();
+  const months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1;
+  if (months <= 0) return 0;
+
+  return months * sipAmount;
 }
 
 export function PortfolioXRay() {
@@ -90,11 +161,13 @@ export function PortfolioXRay() {
             amount_invested: row.amount_invested,
             current_value: row.current_value,
             category: row.category,
+            expense_ratio_pct: row.expense_ratio_pct ?? 0,
+            exit_load_pct: row.exit_load_pct ?? 0,
           }));
           setFunds(mappedFunds);
         } else if (data && data.length === 0) {
           // Add one empty row so it looks nicely blank
-          setFunds([{ id: uuidv4(), name: '', sip_amount: 0, sip_start_date: '', amount_invested: 0, current_value: 0, category: 'large_cap' }]);
+          setFunds([{ id: uuidv4(), name: '', sip_amount: 0, sip_start_date: '', amount_invested: 0, current_value: 0, category: 'large_cap', expense_ratio_pct: 0, exit_load_pct: 0 }]);
         }
       } catch (err) {
         console.error("Failed to load portfolio", err);
@@ -111,10 +184,14 @@ export function PortfolioXRay() {
     );
   };
 
+  const updateFundSipStartDate = (id: string, value: string) => {
+    setFunds((prev) => prev.map((f) => (f.id === id ? { ...f, sip_start_date: value } : f)));
+  };
+
   const addFund = () => {
     setFunds((prev) => [
       ...prev,
-      { id: uuidv4(), name: '', sip_amount: 0, sip_start_date: '', amount_invested: 0, current_value: 0, category: 'large_cap' },
+      { id: uuidv4(), name: '', sip_amount: 0, sip_start_date: '', amount_invested: 0, current_value: 0, category: 'large_cap', expense_ratio_pct: 0, exit_load_pct: 0 },
     ]);
   };
 
@@ -154,6 +231,8 @@ export function PortfolioXRay() {
         amount_invested: f.amount_invested,
         current_value: f.current_value,
         category: f.category,
+        expense_ratio_pct: f.expense_ratio_pct ?? 0,
+        exit_load_pct: f.exit_load_pct ?? 0,
       }));
       await supabase.from('portfolio_funds').upsert(upsertRows);
       
@@ -211,6 +290,59 @@ export function PortfolioXRay() {
   const inputClass =
     'w-full px-3 py-2 rounded-lg border border-[#E2E8F0] bg-white text-[#0F172A] text-sm focus:outline-none focus:border-[#6366F1] focus:ring-1 focus:ring-[#6366F1]/20';
 
+  const SipMonthPicker = ({ value, onChange, compact = false }: { value: string; onChange: (value: string) => void; compact?: boolean }) => {
+    const currentYear = new Date().getFullYear();
+    const yearOptions = Array.from({ length: currentYear - 1989 }, (_, i) => String(1990 + i));
+    const [selectedYear = '', selectedMonth = ''] = value ? value.split('-') : ['', ''];
+
+    const handleMonthChange = (month: string) => {
+      if (!selectedYear || !month) {
+        onChange('');
+        return;
+      }
+      onChange(`${selectedYear}-${month}`);
+    };
+
+    const handleYearChange = (year: string) => {
+      if (!year || !selectedMonth) {
+        onChange('');
+        return;
+      }
+      onChange(`${year}-${selectedMonth}`);
+    };
+
+    return (
+      <div className={`grid grid-cols-2 gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-2 ${compact ? 'w-full min-w-0' : 'min-w-[230px]'}`}>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] mb-1">Month</label>
+          <select
+            value={selectedMonth}
+            onChange={(e) => handleMonthChange(e.target.value)}
+            className={`${inputClass} ${compact ? 'min-w-0' : 'min-w-[105px]'} h-9 py-1.5`}
+          >
+            <option value="">Select</option>
+            {MONTH_OPTIONS.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-[#64748B] mb-1">Year</label>
+          <select
+            value={selectedYear}
+            onChange={(e) => handleYearChange(e.target.value)}
+            className={`${inputClass} ${compact ? 'min-w-0' : 'min-w-[105px]'} h-9 py-1.5`}
+          >
+            <option value="">Select</option>
+            {yearOptions.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+    );
+  };
+
   const cellColor = (pct: number) =>
     pct < 20 ? '#DCFCE7' : pct < 40 ? '#FEF9C3' : '#FEE2E2';
   const cellTextColor = (pct: number) =>
@@ -231,7 +363,7 @@ export function PortfolioXRay() {
   if (initialLoad) return <div className="p-8"><div className="w-8 h-8 border-4 border-[#6366F1] border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-5xl">
+    <div className="p-6 md:p-8 space-y-6 w-full max-w-none">
       <div>
         <h2 className="text-[#0F172A] font-bold text-2xl">MF Portfolio X-Ray</h2>
         <p className="text-[#64748B] text-sm mt-1">Analyze overlap, returns, and rebalancing needs utilizing live data.</p>
@@ -241,7 +373,7 @@ export function PortfolioXRay() {
       <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-[#0F172A] font-semibold text-base">Your Mutual Funds</h3>
+            <h3 className="text-[#0F172A] font-semibold text-base flex items-center gap-1.5">Your Mutual Funds <HintIcon text="Add your funds, sync values, then run analysis for overlap and allocation insights." /></h3>
             <p className="text-[#64748B] text-xs mt-0.5">Click 'Sync Values' to scrape live nav/returns and update your DB</p>
           </div>
           <button
@@ -258,17 +390,30 @@ export function PortfolioXRay() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#F1F5F9]">
-                {['Fund Name', 'SIP Amount (₹)', 'SIP Start', 'Category', 'Est. Curr. Value', ''].map((h) => (
-                  <th key={h} className={`text-left text-[#64748B] text-xs font-medium py-2 pr-3 ${h === '' ? 'w-8' : ''}`}>
-                    {h}
+                {TABLE_COLUMNS.map((col) => (
+                  <th key={col.key} className={`text-left text-[#64748B] text-xs font-medium py-2 pr-3 ${col.className}`}>
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {col.label === 'SIP Amount (₹)' && <HintIcon text={HINTS.sipAmount} />}
+                      {col.label === 'SIP Start' && <HintIcon text={HINTS.sipStart} />}
+                      {col.label === 'Category' && <HintIcon text={HINTS.category} />}
+                      {col.label === 'Expense Ratio %' && <HintIcon text="Annual expense ratio charged by fund. Example: 1.2" />}
+                      {col.label === 'Exit Load %' && <HintIcon text="Exit load charged on redemption. Example: 1.0" />}
+                      {col.label === 'Est. Curr. Value' && <HintIcon text={HINTS.currentValue} />}
+                      {col.label === 'Total Gain' && <HintIcon text="Estimated gain equals current value minus total SIP contributed till today." />}
+                    </span>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F8FAFC]">
-              {funds.map((f) => (
+              {funds.map((f) => {
+                const investedTillDate = f.amount_invested > 0 ? f.amount_invested : calcSIPContributedTillDate(f.sip_amount, f.sip_start_date);
+                const gain = f.current_value > 0 && investedTillDate > 0 ? f.current_value - investedTillDate : null;
+
+                return (
                 <tr key={f.id} className="group hover:bg-[#F8FAFC] transition-colors">
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-3 min-w-[260px]">
                     <input
                       type="text"
                       className={inputClass}
@@ -277,7 +422,7 @@ export function PortfolioXRay() {
                       placeholder="e.g. Nippon India Small Cap"
                     />
                   </td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-3 min-w-[145px]">
                     <input
                       type="number"
                       className={inputClass}
@@ -286,28 +431,56 @@ export function PortfolioXRay() {
                       placeholder="5000"
                     />
                   </td>
-                  <td className="py-2 pr-3">
-                    <input
-                      type="month"
-                      className={inputClass}
-                      value={f.sip_start_date || ''}
-                      onChange={updateFund(f.id, 'sip_start_date')}
-                      placeholder="YYYY-MM"
-                    />
+                  <td className="py-2 pr-3 min-w-[245px]">
+                    <SipMonthPicker value={f.sip_start_date || ''} onChange={(v) => updateFundSipStartDate(f.id, v)} />
                   </td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-3 min-w-[140px]">
                     <select className={inputClass} value={f.category} onChange={updateFund(f.id, 'category')}>
                       {CATEGORIES.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
                       ))}
                     </select>
                   </td>
-                  <td className="py-2 pr-3">
+                  <td className="py-2 pr-3 min-w-[130px]">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className={inputClass}
+                      value={f.expense_ratio_pct ?? ''}
+                      onChange={updateFund(f.id, 'expense_ratio_pct' as keyof Fund)}
+                      placeholder="1.20"
+                    />
+                  </td>
+                  <td className="py-2 pr-3 min-w-[120px]">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className={inputClass}
+                      value={f.exit_load_pct ?? ''}
+                      onChange={updateFund(f.id, 'exit_load_pct' as keyof Fund)}
+                      placeholder="1.00"
+                    />
+                  </td>
+                  <td className="py-2 pr-3 min-w-[145px]">
                      <span className={`text-sm font-semibold ${f.current_value > 0 ? 'text-[#10B981]' : 'text-[#94A3B8]'}`}>
                        {f.current_value > 0 ? formatINR(f.current_value) : '—'}
                      </span>
                   </td>
-                  <td className="py-2">
+                  <td className="py-2 pr-3 min-w-[140px]">
+                    {gain === null ? (
+                      <span className="text-sm font-semibold text-[#94A3B8]">—</span>
+                    ) : (
+                      <span
+                        className={`text-sm font-semibold ${gain >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}
+                        title={`Invested till date: ${formatINR(investedTillDate)}`}
+                      >
+                        {gain >= 0 ? '+' : ''}{formatINR(gain)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 w-8">
                     <button
                       onClick={() => removeFund(f.id)}
                       disabled={funds.length === 0}
@@ -317,14 +490,18 @@ export function PortfolioXRay() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
 
         {/* Mobile card list */}
         <div className="md:hidden space-y-3">
-          {funds.map((f, i) => (
+          {funds.map((f, i) => {
+            const investedTillDate = f.amount_invested > 0 ? f.amount_invested : calcSIPContributedTillDate(f.sip_amount, f.sip_start_date);
+            const gain = f.current_value > 0 && investedTillDate > 0 ? f.current_value - investedTillDate : null;
+
+            return (
             <div key={f.id} className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E2E8F0] space-y-2 relative">
               <button 
                 onClick={() => removeFund(f.id)} 
@@ -334,25 +511,54 @@ export function PortfolioXRay() {
               </button>
               
               <div className="pr-6">
-                <input type="text" className="w-full bg-transparent font-medium text-sm border-b border-dashed border-[#CBD5E1] pb-1 mb-2 outline-none focus:border-[#6366F1]" value={f.name} onChange={updateFund(f.id, 'name')} placeholder="Fund name" />
+                <input
+                  type="text"
+                  className="w-full bg-transparent font-medium text-sm border-b border-dashed border-[#CBD5E1] pb-1 mb-2 outline-none focus:border-[#6366F1]"
+                  value={f.name}
+                  onChange={updateFund(f.id, 'name')}
+                  placeholder="Fund name"
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <input type="number" className={inputClass} value={f.sip_amount || ''} onChange={updateFund(f.id, 'sip_amount')} placeholder="SIP Amount ₹" />
-                <input type="month" className={inputClass} value={f.sip_start_date || ''} onChange={updateFund(f.id, 'sip_start_date')} />
+                <SipMonthPicker value={f.sip_start_date || ''} onChange={(v) => updateFundSipStartDate(f.id, v)} compact />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={inputClass}
+                  value={f.expense_ratio_pct ?? ''}
+                  onChange={updateFund(f.id, 'expense_ratio_pct' as keyof Fund)}
+                  placeholder="Expense Ratio %"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={inputClass}
+                  value={f.exit_load_pct ?? ''}
+                  onChange={updateFund(f.id, 'exit_load_pct' as keyof Fund)}
+                  placeholder="Exit Load %"
+                />
               </div>
               <div className="grid grid-cols-2 gap-2 items-center">
                 <select className={inputClass} value={f.category} onChange={updateFund(f.id, 'category')}>
                   {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
-                <div className="text-right">
-                  <span className={`text-xs font-semibold ${f.current_value > 0 ? 'text-[#10B981]' : 'text-[#64748B]'}`}>
+                <div className="text-right space-y-0.5">
+                  <span className={`block text-xs font-semibold ${f.current_value > 0 ? 'text-[#10B981]' : 'text-[#64748B]'}`}>
                     {f.current_value > 0 ? formatINR(f.current_value) : 'Sync to calc'}
+                  </span>
+                  <span className={`block text-[11px] font-semibold ${gain === null ? 'text-[#94A3B8]' : gain >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    Gain: {gain === null ? '—' : `${gain >= 0 ? '+' : ''}${formatINR(gain)}`}
                   </span>
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </div>
 
         {error && <p className="text-[#EF4444] text-xs mt-3 flex items-center gap-1">⚠️ {error}</p>}
@@ -403,6 +609,11 @@ export function PortfolioXRay() {
               variant={result.avg_expense_ratio < 1 ? 'positive' : result.avg_expense_ratio <= 1.5 ? 'default' : 'negative'}
             />
             <MetricCard
+              label="Avg Exit Load"
+              value={`${result.avg_exit_load.toFixed(1)}%`}
+              variant={result.avg_exit_load <= 0.5 ? 'positive' : result.avg_exit_load <= 1 ? 'default' : 'negative'}
+            />
+            <MetricCard
               label="vs Nifty 50"
               value={`${vsNifty >= 0 ? '+' : ''}${vsNifty.toFixed(1)}%`}
               variant={vsNifty >= 0 ? 'positive' : 'negative'}
@@ -414,6 +625,14 @@ export function PortfolioXRay() {
                 label={result.overlap_severity}
               />
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 text-xs text-[#64748B]">
+            <span className="inline-flex items-center gap-1">Portfolio XIRR <HintIcon text={HINTS.xirr} /></span>
+            <span className="inline-flex items-center gap-1">Avg Expense Ratio <HintIcon text={HINTS.expenseRatio} /></span>
+            <span className="inline-flex items-center gap-1">Avg Exit Load <HintIcon text="Weighted average exit load across your funds." /></span>
+            <span className="inline-flex items-center gap-1">vs Nifty 50 <HintIcon text={HINTS.vsNifty} /></span>
+            <span className="inline-flex items-center gap-1">Overlap Severity <HintIcon text={HINTS.overlapSeverity} /></span>
           </div>
 
           {/* Total Summary */}
@@ -443,7 +662,7 @@ export function PortfolioXRay() {
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Overlap Matrix */}
             <div className="flex-1 bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm overflow-hidden">
-              <h3 className="text-[#0F172A] font-semibold text-base mb-4">Fund Overlap Heatmap</h3>
+              <h3 className="text-[#0F172A] font-semibold text-base mb-4 flex items-center gap-1.5">Fund Overlap Heatmap <HintIcon text={HINTS.overlapHeatmap} /></h3>
               <div className="overflow-x-auto pb-4 custom-scrollbar">
                 <table className="text-xs border-collapse w-full min-w-[300px]">
                   <thead>
@@ -496,7 +715,7 @@ export function PortfolioXRay() {
 
             {/* Allocation */}
             <div className="flex-1 bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
-              <h3 className="text-[#0F172A] font-semibold text-base mb-4">Asset Allocation</h3>
+              <h3 className="text-[#0F172A] font-semibold text-base mb-4 flex items-center gap-1.5">Asset Allocation <HintIcon text={HINTS.allocation} /></h3>
               {/* Stacked bar */}
               <div className="h-10 rounded-full overflow-hidden flex mb-5 shadow-inner">
                 {Object.entries(result.allocation).map(([cat, pct]) => (
@@ -524,7 +743,7 @@ export function PortfolioXRay() {
               {/* Rebalancing note */}
               <div className="mt-6 p-4 bg-gradient-to-r from-[#F8FAFC] to-[#F1F5F9] rounded-xl border border-[#E2E8F0]">
                 <p className="text-[#475569] text-xs leading-relaxed">
-                  <strong className="text-[#0F172A]">Rebalancing Protocol:</strong> Re-evaluate your allocation annually and execute rebalancing if any category drifts &gt;5% from your target trajectory.
+                  <strong className="text-[#0F172A] inline-flex items-center gap-1">Rebalancing Protocol <HintIcon text={HINTS.rebalance} />:</strong> Re-evaluate your allocation annually and execute rebalancing if any category drifts &gt;5% from your target trajectory.
                 </p>
               </div>
             </div>

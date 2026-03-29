@@ -24,9 +24,6 @@ export function AIExplanationCard({ text, isLoading, title = 'Arthmize AI says' 
       ) : (
         <p className="text-[#374151] text-sm leading-relaxed">{text}</p>
       )}
-      <p className="text-[#9CA3AF] text-xs mt-3 text-right">
-        Not licensed financial advice · SEBI compliant
-      </p>
     </div>
   );
 }

@@ -5,10 +5,68 @@ import { supabase } from '../../../lib/supabase';
 import {
   User, Briefcase, Calendar, MapPin, Heart,
   Wallet, DollarSign, TrendingUp, Home, CreditCard, ShieldAlert,
-  ArrowRight, Loader2, Compass, Shield, PieChart, AlertTriangle,
+  ArrowRight, Loader2, Compass, Shield, PieChart,
   CheckCircle2, XCircle, Clock, Edit3, Save, X
 } from 'lucide-react';
 import { PortfolioSummary } from '../shared/PortfolioSummary';
+import { Info } from 'lucide-react';
+
+const FIELD_HINTS: Record<string, string> = {
+  employment_type: 'Choose your current work type so tax and savings suggestions match your profile.',
+  date_of_birth: 'Used to estimate your age for retirement planning and risk profiling.',
+  city_type: 'Metro/non-metro affects HRA and cost-of-living assumptions.',
+  marital_status: 'Helps with household planning and insurance recommendations.',
+
+  annual_income: 'Enter gross annual base salary before deductions.',
+  hra_received: 'Total HRA received from employer in a year.',
+  epf_monthly: 'Your monthly EPF contribution amount.',
+  secondary_income_monthly: 'Any extra monthly income apart from primary salary/business.',
+  passive_income_monthly: 'Monthly income from rent, dividends, interest, or royalties.',
+
+  monthly_expense: 'Your fixed/essential monthly living expenses.',
+  rent_paid_monthly: 'Monthly rent paid for your current residence.',
+
+  current_savings: 'Cash/bank balance available for immediate use.',
+  total_investments: 'Current total value of all your investments.',
+  monthly_sip: 'Total amount invested every month through SIPs.',
+  emergency_fund: 'Amount set aside for emergencies only.',
+  deduction_80c: 'Eligible annual investments under Section 80C.',
+  nps_80ccd: 'Annual contribution eligible under Section 80CCD(1B).',
+  expected_return: 'Expected annual return rate. Use decimal like 0.12 for 12%.',
+
+  has_term_insurance: 'Indicate whether you currently have a term life policy.',
+  term_insurance_name: 'Policy/provider name for your term life insurance.',
+  term_insurance_premium: 'Total yearly premium paid for term insurance.',
+  term_insurance_start_year: 'Policy coverage start year.',
+  term_insurance_end_year: 'Policy coverage end/maturity year.',
+
+  has_health_insurance: 'Indicate whether you currently have health insurance.',
+  health_insurance_name: 'Policy/provider name for your health insurance.',
+  health_insurance_premium: 'Total yearly premium paid for health insurance.',
+  health_insurance_start_year: 'Policy coverage start year.',
+  health_insurance_end_year: 'Policy coverage end/renewal horizon year.',
+
+  emergency_months: 'How many months your emergency fund can cover expenses.',
+  tax_regime_chosen: 'Your preferred tax regime selection status (old/new finalized).',
+
+  home_loan_emi: 'Monthly EMI paid toward home loan.',
+  home_loan_interest_annual: 'Total annual home-loan interest paid.',
+  credit_card_debt: 'Current unpaid credit card outstanding amount.',
+};
+
+function HintIcon({ text }: { text?: string }) {
+  if (!text) return null;
+
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:text-[#6366F1] cursor-help"
+    >
+      <Info className="w-3.5 h-3.5" />
+    </span>
+  );
+}
 
 const bool = (v: boolean | null | undefined) =>
   v === true ? <span className="flex items-center gap-1 text-emerald-600 text-sm font-medium"><CheckCircle2 className="w-4 h-4" />Yes</span>
@@ -16,10 +74,12 @@ const bool = (v: boolean | null | undefined) =>
   : <span className="text-slate-400 text-sm">—</span>;
 
 const EditableRow = ({ label, icon, field, valueStr, colorClass = "text-slate-800", type = "number", options = [], isBool = false, isEditing, data, editData, setEditData }: any) => {
+  const hint = FIELD_HINTS[field];
+
   if (!isEditing) {
     return (
       <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-        <span className="text-sm text-slate-500 flex items-center gap-2">{icon}{label}</span>
+        <span className="text-sm text-slate-500 flex items-center gap-2">{icon}{label}<HintIcon text={hint} /></span>
         {isBool ? bool(data?.[field]) : <span className={`text-sm font-medium ${colorClass}`}>{valueStr}</span>}
       </div>
     );
@@ -28,7 +88,7 @@ const EditableRow = ({ label, icon, field, valueStr, colorClass = "text-slate-80
   // Edit Mode
   return (
     <div className="flex flex-col justify-between items-start pb-3 border-b border-slate-100 gap-1.5">
-      <span className="text-sm text-slate-500 flex items-center gap-2">{icon}{label}</span>
+      <span className="text-sm text-slate-500 flex items-center gap-2">{icon}{label}<HintIcon text={hint} /></span>
       {type === 'select' ? (
         <select
           value={editData[field] || ''}

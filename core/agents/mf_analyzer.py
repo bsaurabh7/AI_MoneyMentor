@@ -7,9 +7,28 @@ from ddgs import DDGS
 from agent import model
 import json
 import logging
+import re
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+POPULAR_FUNDS = [
+    "Parag Parikh Flexi Cap Fund",
+    "SBI Small Cap Fund",
+    "Axis Small Cap Fund",
+    "Nippon India Small Cap Fund",
+    "HDFC Balanced Advantage Fund",
+    "ICICI Prudential Bluechip Fund",
+    "Mirae Asset Large Cap Fund",
+    "UTI Nifty 50 Index Fund",
+    "Kotak Emerging Equity Fund",
+    "Aditya Birla Sun Life Frontline Equity Fund",
+    "Canara Robeco Bluechip Equity Fund",
+    "DSP Midcap Fund",
+    "Franklin India Prima Fund",
+    "Quant Small Cap Fund",
+    "Motilal Oswal Midcap Fund",
+]
 
 class FundInput(BaseModel):
     id: str
@@ -17,6 +36,8 @@ class FundInput(BaseModel):
     sip_amount: float
     sip_start_date: str # YYYY-MM
     category: Optional[str] = None
+    expense_ratio_pct: Optional[float] = 0.0
+    exit_load_pct: Optional[float] = 0.0
 
 class BatchFundRequest(BaseModel):
     funds: List[FundInput]
@@ -25,6 +46,20 @@ class FundOutput(BaseModel):
     id: str
     amount_invested: int
     current_value: int
+
+def _normalize_fund_name(candidate: str) -> str:
+    cleaned = re.sub(r"\s+", " ", candidate).strip(" -|:;,.")
+    return cleaned
+
+def _extract_fund_name_candidates(text: str) -> List[str]:
+    patterns = [
+        r"([A-Z][A-Za-z&\-\.\s]{2,}?\s(?:Mutual\sFund|Fund))",
+        r"([A-Z][A-Za-z&\-\.\s]{2,}?\s(?:Index\sFund))",
+    ]
+    out: List[str] = []
+    for p in patterns:
+        out.extend(re.findall(p, text))
+    return [_normalize_fund_name(x) for x in out if x and len(x.strip()) > 5]
 
 def fallback_cagr(category: str) -> float:
     cat = (category or "").lower()
@@ -36,7 +71,13 @@ def fallback_cagr(category: str) -> float:
     if 'international' in cat: return 10.0
     return 12.0
 
-def calculate_sip_value(sip_amount: float, start_date_str: str, cagr: float) -> tuple[int, int]:
+def calculate_sip_value(
+    sip_amount: float,
+    start_date_str: str,
+    cagr: float,
+    expense_ratio_pct: float = 0.0,
+    exit_load_pct: float = 0.0,
+) -> tuple[int, int]:
     try:
         start_date = datetime.strptime(start_date_str, "%Y-%m")
     except ValueError:
@@ -49,16 +90,19 @@ def calculate_sip_value(sip_amount: float, start_date_str: str, cagr: float) -> 
 
     amount_invested = sip_amount * months
 
-    if cagr <= 0:
+    net_cagr = max(0.0, cagr - max(0.0, expense_ratio_pct))
+
+    if net_cagr <= 0:
         return int(amount_invested), int(amount_invested)
 
     # Future Value of SIP
-    r_monthly = (cagr / 100.0) / 12.0
+    r_monthly = (net_cagr / 100.0) / 12.0
     
     # Formula: P * [((1 + r)^n - 1) / r] * (1 + r)
-    current_value = sip_amount * (((1 + r_monthly)**months - 1) / r_monthly) * (1 + r_monthly)
+    gross_current_value = sip_amount * (((1 + r_monthly)**months - 1) / r_monthly) * (1 + r_monthly)
+    net_current_value = gross_current_value * (1 - (max(0.0, exit_load_pct) / 100.0))
     
-    return int(amount_invested), int(current_value)
+    return int(amount_invested), int(net_current_value)
 
 async def _analyze_single_fund(fund: FundInput) -> FundOutput:
     # 1. Scrape latest CAGR
@@ -121,7 +165,13 @@ Task: Extract the 3-year or 5-year Annualized SIP Return (CAGR) for the mutual f
             logger.error(f"[MF Analyzer] LLM extraction failed for {fund.name}: {e}")
 
     # 3. Mathematically compute standard values
-    invested, current = calculate_sip_value(fund.sip_amount, fund.sip_start_date, cagr)
+    invested, current = calculate_sip_value(
+        fund.sip_amount,
+        fund.sip_start_date,
+        cagr,
+        fund.expense_ratio_pct or 0.0,
+        fund.exit_load_pct or 0.0,
+    )
     
     return FundOutput(
         id=fund.id,
@@ -135,3 +185,39 @@ async def analyze_funds(req: BatchFundRequest) -> List[FundOutput]:
     tasks = [_analyze_single_fund(f) for f in req.funds]
     results = await asyncio.gather(*tasks)
     return list(results)
+
+@router.get("/suggest")
+async def suggest_funds(q: str = "") -> List[str]:
+    query = (q or "").strip()
+    if len(query) < 2:
+        return []
+
+    live_candidates: List[str] = []
+    try:
+        def do_search():
+            with DDGS() as ddgs:
+                return list(ddgs.text(f"{query} mutual fund India", max_results=8))
+
+        results = await asyncio.to_thread(do_search)
+        for r in results:
+            title = r.get("title", "") or ""
+            body = r.get("body", "") or ""
+            live_candidates.extend(_extract_fund_name_candidates(title))
+            live_candidates.extend(_extract_fund_name_candidates(body))
+    except Exception as e:
+        logger.error(f"[MF Analyzer] suggest search failed for '{query}': {e}")
+
+    # Always merge with curated list filtered by query as fallback and quality booster
+    merged = live_candidates + [f for f in POPULAR_FUNDS if query.lower() in f.lower()]
+    seen = set()
+    deduped: List[str] = []
+    for name in merged:
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(name)
+        if len(deduped) >= 8:
+            break
+
+    return deduped

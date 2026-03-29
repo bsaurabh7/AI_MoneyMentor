@@ -389,6 +389,8 @@ export interface Fund {
   amount_invested: number;
   current_value: number;
   category: string;
+  expense_ratio_pct?: number;
+  exit_load_pct?: number;
 }
 
 export interface OverlapMatrix {
@@ -401,6 +403,7 @@ export interface PortfolioResponse {
   xirr: number;
   benchmark_return: number;
   avg_expense_ratio: number;
+  avg_exit_load: number;
   overlap_matrix: OverlapMatrix;
   overlap_severity: 'Low' | 'Medium' | 'High';
   allocation: Record<string, number>;
@@ -426,15 +429,42 @@ const EXPENSE_RATIO: Record<string, number> = {
 };
 
 export function analyzePortfolio(funds: Fund[]): PortfolioResponse {
-  const total_invested = funds.reduce((s, f) => s + f.amount_invested, 0);
-  const total_current = funds.reduce((s, f) => s + f.current_value, 0);
+  const adjustedFunds = funds.map((f) => {
+    const expenseRatio =
+      f.expense_ratio_pct !== null && f.expense_ratio_pct !== undefined
+        ? Number(f.expense_ratio_pct)
+        : (EXPENSE_RATIO[f.category] || 1.5);
+    const exitLoad =
+      f.exit_load_pct !== null && f.exit_load_pct !== undefined
+        ? Number(f.exit_load_pct)
+        : 0;
+
+    const currentAfterExitLoad = Number(f.current_value || 0) * (1 - Math.max(0, exitLoad) / 100);
+
+    return {
+      ...f,
+      _expense_ratio_pct: Math.max(0, expenseRatio),
+      _exit_load_pct: Math.max(0, exitLoad),
+      _current_after_exit_load: Math.max(0, currentAfterExitLoad),
+    };
+  });
+
+  const total_invested = adjustedFunds.reduce((s, f) => s + Number(f.amount_invested || 0), 0);
+  const total_current = adjustedFunds.reduce((s, f) => s + f._current_after_exit_load, 0);
 
   // Simple annualized return approximation (assume 2yr avg holding)
-  const total_gain = (total_current - total_invested) / total_invested;
-  const xirr = Math.round((Math.pow(1 + total_gain, 0.5) - 1) * 1000) / 10;
+  const total_gain = total_invested > 0 ? (total_current - total_invested) / total_invested : 0;
+  const xirr = Math.round((Math.pow(Math.max(0.0001, 1 + total_gain), 0.5) - 1) * 1000) / 10;
   const benchmark_return = 12.1;
-  const avg_expense_ratio =
-    funds.reduce((s, f) => s + (EXPENSE_RATIO[f.category] || 1.5), 0) / funds.length;
+  const weightBase = Math.max(1, adjustedFunds.reduce((s, f) => s + Math.max(0, Number(f.amount_invested || 0)), 0));
+  const avg_expense_ratio = adjustedFunds.reduce(
+    (s, f) => s + f._expense_ratio_pct * (Math.max(0, Number(f.amount_invested || 0)) / weightBase),
+    0
+  );
+  const avg_exit_load = adjustedFunds.reduce(
+    (s, f) => s + f._exit_load_pct * (Math.max(0, Number(f.amount_invested || 0)) / weightBase),
+    0
+  );
 
   // Overlap matrix
   const overlap_matrix: OverlapMatrix = {};
@@ -456,12 +486,12 @@ export function analyzePortfolio(funds: Fund[]): PortfolioResponse {
 
   // Allocation
   const allocation: Record<string, number> = {};
-  for (const f of funds) {
-    const pct = Math.round((f.current_value / total_current) * 100);
+  for (const f of adjustedFunds) {
+    const pct = total_current > 0 ? Math.round((f._current_after_exit_load / total_current) * 100) : 0;
     allocation[f.category] = (allocation[f.category] || 0) + pct;
   }
 
-  const reasoning = `Your portfolio of ${funds.length} funds has an estimated XIRR of ${xirr.toFixed(1)}% — ${xirr > benchmark_return ? `outperforming Nifty 50 by ${(xirr - benchmark_return).toFixed(1)}%` : `underperforming Nifty 50 by ${(benchmark_return - xirr).toFixed(1)}%`}. The average expense ratio of ${avg_expense_ratio.toFixed(2)}% ${avg_expense_ratio > 1.5 ? 'is high — consider switching to direct plans which can save 0.5–1% annually' : 'is reasonable'}. ${overlap_severity === 'High' ? 'The fund overlap is HIGH — you may be doubling exposure to the same stocks. Consider consolidating to 3–4 funds across truly different categories.' : overlap_severity === 'Medium' ? 'There is moderate overlap between some funds. Review if similar-category funds are serving different purposes.' : 'Fund overlap is low — good diversification across categories.'} Rebalance annually to maintain your target allocation.`;
+  const reasoning = `Your portfolio of ${adjustedFunds.length} funds has an estimated XIRR of ${xirr.toFixed(1)}% — ${xirr > benchmark_return ? `outperforming Nifty 50 by ${(xirr - benchmark_return).toFixed(1)}%` : `underperforming Nifty 50 by ${(benchmark_return - xirr).toFixed(1)}%`}. The weighted average expense ratio is ${avg_expense_ratio.toFixed(2)}% ${avg_expense_ratio > 1.5 ? 'which is high — direct plans can reduce long-term drag' : 'which is in a reasonable range'}. The weighted average exit load is ${avg_exit_load.toFixed(2)}%, which is applied as current redeemable-value adjustment in this analysis. ${overlap_severity === 'High' ? 'The fund overlap is HIGH — you may be doubling exposure to the same stocks. Consider consolidating to 3–4 funds across truly different categories.' : overlap_severity === 'Medium' ? 'There is moderate overlap between some funds. Review if similar-category funds are serving different purposes.' : 'Fund overlap is low — good diversification across categories.'} Rebalance annually to maintain your target allocation.`;
 
   return {
     total_invested,
@@ -469,6 +499,7 @@ export function analyzePortfolio(funds: Fund[]): PortfolioResponse {
     xirr,
     benchmark_return,
     avg_expense_ratio: Math.round(avg_expense_ratio * 10) / 10,
+    avg_exit_load: Math.round(avg_exit_load * 10) / 10,
     overlap_matrix,
     overlap_severity,
     allocation,

@@ -149,6 +149,8 @@ create table if not exists public.portfolio_funds (
   sip_start_date text not null,
   amount_invested numeric not null,
   current_value numeric not null,
+  expense_ratio_pct numeric default 0,
+  exit_load_pct numeric default 0,
   category text check (category in ('large_cap','mid_cap','small_cap','flexi_cap','elss','debt','international')),
 
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
@@ -291,7 +293,9 @@ ADD COLUMN IF NOT EXISTS epf_nps_contribution numeric default 0;
 ALTER TABLE public.portfolio_funds
 DROP COLUMN IF EXISTS session_id,
 ADD COLUMN IF NOT EXISTS sip_amount numeric default 0,
-ADD COLUMN IF NOT EXISTS sip_start_date text default '2024-01';
+ADD COLUMN IF NOT EXISTS sip_start_date text default '2024-01',
+ADD COLUMN IF NOT EXISTS expense_ratio_pct numeric default 0,
+ADD COLUMN IF NOT EXISTS exit_load_pct numeric default 0;
 
 ALTER TABLE public.portfolio_analysis
 DROP COLUMN IF EXISTS session_id;
