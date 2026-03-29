@@ -61,7 +61,14 @@ export type UserProfile = {
   total_investments: number | null;
   epf_monthly: number | null;
   has_term_insurance: boolean | null;
+  term_insurance_name: string | null;
+  term_insurance_premium: number | null;
+  term_insurance_start_year: number | null;
+  term_insurance_end_year: number | null;
   has_health_insurance: boolean | null;
+  health_insurance_name: string | null;
+  health_insurance_start_year: number | null;
+  health_insurance_end_year: number | null;
   tax_regime_chosen: boolean | null;
   expected_return: number | null;
   emergency_months: string | null;

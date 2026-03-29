@@ -271,7 +271,14 @@ ADD COLUMN IF NOT EXISTS emergency_months text check (emergency_months in ('<1',
 ADD COLUMN IF NOT EXISTS has_term_insurance boolean default false,
 ADD COLUMN IF NOT EXISTS has_health_insurance boolean default true,
 ADD COLUMN IF NOT EXISTS tax_regime_chosen boolean,
-ADD COLUMN IF NOT EXISTS expected_return numeric default 0.12;
+ADD COLUMN IF NOT EXISTS expected_return numeric default 0.12,
+ADD COLUMN IF NOT EXISTS term_insurance_name text,
+ADD COLUMN IF NOT EXISTS term_insurance_premium numeric default 0,
+ADD COLUMN IF NOT EXISTS term_insurance_start_year integer,
+ADD COLUMN IF NOT EXISTS term_insurance_end_year integer,
+ADD COLUMN IF NOT EXISTS health_insurance_name text,
+ADD COLUMN IF NOT EXISTS health_insurance_start_year integer,
+ADD COLUMN IF NOT EXISTS health_insurance_end_year integer;
 
 ALTER TABLE public.health_scores
 ADD COLUMN IF NOT EXISTS has_health_insurance boolean,

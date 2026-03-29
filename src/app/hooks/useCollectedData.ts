@@ -30,7 +30,13 @@ export interface Expenses {
   fixed_monthly?: number;
   discretionary_monthly?: number;
   health_insurance_premium?: number;
+  health_insurance_name?: string;
+  health_insurance_start_year?: number;
+  health_insurance_end_year?: number;
   life_insurance_premium?: number;
+  term_insurance_name?: string;
+  term_insurance_start_year?: number;
+  term_insurance_end_year?: number;
 }
 
 export interface Assets {
@@ -48,6 +54,7 @@ export interface Assets {
   emergency_months?: '<1' | '1-3' | '3-6' | '>6';
   has_term_insurance?: boolean;
   has_health_insurance?: boolean;
+  health_insurance_premium?: number; 
   tax_regime_chosen?: boolean;
   expected_return?: number; // decimal e.g. 0.12 for 12%
 }
