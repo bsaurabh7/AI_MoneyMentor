@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev:frontend": "vite",
-    "dev:backend": "cd core && ../.venv/bin/python -m uvicorn main:app --reload --port 8000",
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:backend_mac": "cd core && ../.venv/bin/python -m uvicorn main:app --reload --port 8000",
+    "dev:backend_win": "cd core && .venv\\Scripts\\python.exe -m uvicorn main:app --reload --port 8000",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend_win\"",
+    "dev:mac": "concurrently \"npm run dev:frontend\" \"npm run dev:backend_mac\"",
     "build": "vite build"
   },
   "dependencies": {
