@@ -306,7 +306,6 @@ export function ProfilePage() {
               <div className="space-y-3">
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Fixed Monthly" icon={<DollarSign className="w-3.5 h-3.5 opacity-0" />} field="monthly_expense" valueStr={fmt(data?.monthly_expense)} colorClass="text-amber-600" />
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Rent Paid (Monthly)" icon={<DollarSign className="w-3.5 h-3.5 opacity-0" />} field="rent_paid_monthly" valueStr={fmt(data?.rent_paid_monthly)} colorClass="text-amber-600" />
-                <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Health Insurance (Annual)" icon={<DollarSign className="w-3.5 h-3.5 opacity-0" />} field="health_insurance_premium" valueStr={fmt(data?.health_insurance_premium)} />
               </div>
             </div>
 
@@ -338,7 +337,39 @@ export function ProfilePage() {
               </h2>
               <div className="space-y-3">
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Term Life Insurance" icon={<CheckCircle2 className="w-3.5 h-3.5" />} field="has_term_insurance" isBool={true} type="boolean" />
+                
+                {(isEditing ? editData.has_term_insurance : data.has_term_insurance) && (
+                  <div className="pl-6 space-y-3 border-l-2 border-indigo-50 mt-2 pb-2">
+                    <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Policy Name" field="term_insurance_name" type="text" valueStr={data?.term_insurance_name} />
+                    <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Premium (Annual)" field="term_insurance_premium" valueStr={fmt(data?.term_insurance_premium)} />
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Start Year" field="term_insurance_start_year" type="number" valueStr={data?.term_insurance_start_year} />
+                      </div>
+                      <div className="flex-1">
+                        <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="End Year" field="term_insurance_end_year" type="number" valueStr={data?.term_insurance_end_year} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Health Insurance" icon={<CheckCircle2 className="w-3.5 h-3.5" />} field="has_health_insurance" isBool={true} type="boolean" />
+                
+                {(isEditing ? editData.has_health_insurance : data.has_health_insurance) && (
+                  <div className="pl-6 space-y-3 border-l-2 border-emerald-50 mt-2 pb-2">
+                    <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Policy Name" field="health_insurance_name" type="text" valueStr={data?.health_insurance_name} />
+                    <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Premium (Annual)" field="health_insurance_premium" valueStr={fmt(data?.health_insurance_premium)} />
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Start Year" field="health_insurance_start_year" type="number" valueStr={data?.health_insurance_start_year} />
+                      </div>
+                      <div className="flex-1">
+                        <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="End Year" field="health_insurance_end_year" type="number" valueStr={data?.health_insurance_end_year} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <EditableRow isEditing={isEditing} data={data} editData={editData} setEditData={setEditData} label="Emergency Coverage" icon={<Clock className="w-3.5 h-3.5" />} field="emergency_months" valueStr={emergencyLabel(data?.emergency_months)}
                   colorClass={emergencyColor(data?.emergency_months)} type="select"
                   options={[
