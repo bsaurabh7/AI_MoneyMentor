@@ -115,6 +115,72 @@ function fmtAmt(n: number): string {
   return `₹${n}`;
 }
 
+// ── Financial Context Checker ─────────────────────────────────────────────────
+function isFinancialQuery(text: string): boolean {
+  const lower = text.toLowerCase();
+  
+  // Keywords related to financial/economic topics
+  const financialKeywords = [
+    // Core finance: tax, investment, retirement, banking
+    'tax', 'regime', 'deduction', '80c', '80d', '80ccd', 'nps', 'hra', 'cess',
+    'investment', 'mutual fund', 'mf', 'sip', 'etf', 'stock', 'share', 'bond',
+    'retire', 'retirement', 'fire', 'corpus', 'pension', 'emi', 'loan', 'credit',
+    'insurance', 'health', 'term', 'life', 'cover', 'premium', 'claim',
+    'portfolio', 'rebalance', 'allocation', 'diversif', 'overlap',
+    'expense ratio', 'entry load', 'exit load', 'nav',
+    'savings', 'emergency fund', 'fd', 'ppf', 'recurring',
+    'income', 'salary', 'bonus', 'hra', 'rent', 'dearness',
+    'cagr', 'return', 'yield', 'dividend', 'profit', 'loss', 'gain',
+    'budget', 'expense', 'spending', 'cash flow',
+    'mortgage', 'home loan', 'car loan', 'personal loan',
+    'wealth', 'net worth', 'asset', 'liability', 'balance sheet',
+    'interest rate', 'inflation', 'sebi', 'rbi', 'gsm',
+    'money health', 'financial goal', 'financial plan',
+    'cost of living', 'expense analysis', 'tax saving',
+    'sebi', 'compliant', 'licensed', 'advisor',
+    '₹', 'rupee', 'lakh', 'crore', 'per month', 'per year', 'annum',
+    'optimize', 'minimize', 'maximize', 'efficient',
+  ];
+  
+  // Check if any financial keyword appears in the text
+  for (const keyword of financialKeywords) {
+    if (lower.includes(keyword)) return true;
+  }
+  
+  // Also accept queries about the 4 main agents
+  if (/\b(fire|tax|portfolio|money health|agent)\b/.test(lower)) return true;
+  
+  return false;
+}
+
+// ── Agent Detection ────────────────────────────────────────────────────────────
+function detectAgentFromQuery(text: string): 'sip' | 'insurance' | 'loan' | 'expenses' | null {
+  const lower = text.toLowerCase();
+  
+  // SIP Agent detection
+  if (/\bsip\b|suggest.*sip|best.*sip|recommend.*sip|sip.*recommend|monthly investment|investment.*plan|mutual.*fund.*plan|sip.*suggestion/.test(lower)) {
+    return 'sip';
+  }
+  
+  // Insurance Agent detection
+  if (/insurance|term|health|coverage|premium|need.*insurance|should.*insurance|insurance.*need|cover.*need|how much.*cover|insurance.*plan/.test(lower)) {
+    return 'insurance';
+  }
+  
+  // Loan Agent detection
+  if (/\bloan\b|emi|mortgage|car.*loan|home.*loan|personal.*loan|loan.*optimize|reduce.*emi|emi.*reduce|debt.*repay|deb.*plan/.test(lower)) {
+    return 'loan';
+  }
+  
+  // Expenses Agent detection
+  if (/expense|spending|budget|track.*spending|monthly.*expense|expense.*track|spend|cost.*analysis|cash.*flow/.test(lower)) {
+    return 'expenses';
+  }
+  
+  return null;
+}
+
+
 // ── Quick replies per step ─────────────────────────────────────────────────
 const QUICK_REPLIES: Record<ConversationStep, string[]> = {
   salary: ['₹12L', '₹18L', '₹24L', '₹36L'],
@@ -965,6 +1031,34 @@ export function useChatBot(initialData?: CollectedData) {
               await addBotMessage("Please enter a retirement age higher than your current age!");
             }
           } else {
+            // ── Check if user is asking about one of the 4 agents ──
+            const detectedAgent = detectAgentFromQuery(userText);
+            if (detectedAgent) {
+              const agentLabels: Record<string, string> = {
+                sip: "💰 SIP Recommendation Agent",
+                insurance: "🛡️ Insurance Agent",
+                loan: "🏠 Loan Optimizer Agent",
+                expenses: "📊 Expense Tracker Agent",
+              };
+              const messages: Record<string, string> = {
+                sip: "I can help! Use the **💰 SIP Recommendation Agent** in the sidebar for tailored SIP suggestions based on your profile and budget.",
+                insurance: "I can help! Use the **🛡️ Insurance Agent** in the sidebar to find out what coverage you need and get plan recommendations.",
+                loan: "I can help! Use the **🏠 Loan Optimizer Agent** in the sidebar to analyze your loans and find ways to reduce EMI.",
+                expenses: "I can help! Use the **📊 Expense Tracker Agent** in the sidebar to track, categorize, and optimize your monthly spending.",
+              };
+              await addBotMessage(messages[detectedAgent], 700);
+              break;
+            }
+
+            // ── Check if query is within financial/economic scope ──
+            if (!isFinancialQuery(userText)) {
+              await addBotMessage(
+                "That's outside my expertise! 😅\n\nI'm specialized in **tax optimization, retirement planning (FIRE), mutual fund portfolio analysis, and money health scoring**.\n\nFeel free to ask me anything about taxes, investments, retirement goals, insurance, loans, or your finances! 💰",
+                700
+              );
+              break;
+            }
+
             // ── Connect to Python FastAPI V3 Agent ──
             try {
               const typingId = uid();

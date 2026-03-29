@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertCircle, Database } from 'lucide-react';
 import { calculateTax, formatINR, type TaxInputs, type TaxResponse } from '../../utils/finCalc';
 import { AIExplanationCard } from '../shared/AIExplanationCard';
@@ -59,6 +59,10 @@ export function TaxOptimizer() {
   const [result, setResult] = useState<TaxResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hasCalculated, setHasCalculated] = useState(false);
+  const [activeView, setActiveView] = useState<'form' | 'analysis'>('form');
+  const optimizerRef = useRef<HTMLDivElement | null>(null);
+  const leftTopAfterCalcRef = useRef(false);
   const [dataSource, setDataSource] = useState<'profile' | 'partial' | 'empty'>('empty');
 
   // Pre-fill from Supabase profile whenever it loads
@@ -93,16 +97,65 @@ export function TaxOptimizer() {
       return;
     }
     setError('');
+    setHasCalculated(true);
+    leftTopAfterCalcRef.current = false;
+    setActiveView('analysis');
     setLoading(true);
     setTimeout(() => { setResult(calculateTax(form)); setLoading(false); }, 600);
   };
+
+  useEffect(() => {
+    if (!hasCalculated) return;
+    const optimizerEl = optimizerRef.current;
+    if (!optimizerEl) return;
+
+    const findScrollableParent = (start: HTMLElement): HTMLElement | Window => {
+      let node: HTMLElement | null = start.parentElement;
+      while (node) {
+        const { overflowY } = window.getComputedStyle(node);
+        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return window;
+    };
+
+    const scrollHost = findScrollableParent(optimizerEl);
+    const getScrollTop = () =>
+      scrollHost === window
+        ? window.scrollY || document.documentElement.scrollTop || 0
+        : (scrollHost as HTMLElement).scrollTop;
+
+    const onScroll = () => {
+      const atTop = getScrollTop() <= 8;
+
+      if (!atTop) {
+        leftTopAfterCalcRef.current = true;
+        setActiveView('analysis');
+        return;
+      }
+
+      if (leftTopAfterCalcRef.current) {
+        setActiveView('form');
+      }
+    };
+
+    if (scrollHost === window) {
+      window.addEventListener('scroll', onScroll, { passive: true });
+      return () => window.removeEventListener('scroll', onScroll);
+    }
+
+    (scrollHost as HTMLElement).addEventListener('scroll', onScroll, { passive: true });
+    return () => (scrollHost as HTMLElement).removeEventListener('scroll', onScroll);
+  }, [hasCalculated]);
 
   const inputClass =
     'w-full px-3 py-2.5 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-[#0F172A] text-sm focus:outline-none focus:border-[#6366F1] focus:ring-2 focus:ring-[#6366F1]/20 transition-colors';
   const labelClass = 'block text-[#374151] text-sm font-medium mb-1.5';
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-5xl">
+    <div ref={optimizerRef} className="p-6 md:p-8 space-y-6 max-w-6xl">
       {/* Header */}
       <div>
         <h2 className="text-[#0F172A] font-bold text-2xl">Tax Regime Optimizer</h2>
@@ -123,7 +176,13 @@ export function TaxOptimizer() {
       )}
 
       {/* Input Card */}
-      <div className="bg-white border border-[#E2E8F0] rounded-xl p-6">
+      <div
+        className={`bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4 transform transition-all duration-500 ease-out ${
+          hasCalculated && activeView === 'analysis'
+            ? '-translate-x-8 opacity-0 max-h-0 overflow-hidden pointer-events-none p-0 border-transparent'
+            : 'translate-x-0 opacity-100 max-h-[2200px]'
+        }`}
+      >
         <h3 className="text-[#0F172A] font-semibold text-base mb-4">Your income &amp; deductions</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -193,38 +252,46 @@ export function TaxOptimizer() {
         </button>
       </div>
 
-      {/* Loading skeleton */}
-      {loading && (
-        <div className="flex gap-4">
-          {[0, 1].map((i) => (
-            <div key={i} className="flex-1 bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
-              <div className="h-4 bg-[#F1F5F9] rounded animate-pulse w-1/3" />
-              <div className="h-8 bg-[#F1F5F9] rounded animate-pulse w-1/2" />
-              <div className="space-y-2 pt-2">
-                {[1,2,3,4,5].map((j) => <div key={j} className="h-3 bg-[#F1F5F9] rounded animate-pulse" />)}
+      <div
+        className={`space-y-5 transform transition-all duration-500 ease-out ${
+          hasCalculated && activeView === 'form'
+            ? 'opacity-0 translate-y-5 max-h-0 overflow-hidden pointer-events-none'
+            : 'opacity-100 translate-y-0 max-h-[10000px]'
+        }`}
+      >
+        {/* Loading skeleton */}
+        {loading && (
+          <div className="flex gap-4">
+            {[0, 1].map((i) => (
+              <div key={i} className="flex-1 bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3">
+                <div className="h-4 bg-[#F1F5F9] rounded animate-pulse w-1/3" />
+                <div className="h-8 bg-[#F1F5F9] rounded animate-pulse w-1/2" />
+                <div className="space-y-2 pt-2">
+                  {[1,2,3,4,5].map((j) => <div key={j} className="h-3 bg-[#F1F5F9] rounded animate-pulse" />)}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {/* Results */}
-      {result && !loading && (
-        <>
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#D1FAE5] border border-[#6EE7B7]">
-            <CheckCircle className="w-4 h-4 text-[#065F46]" />
-            <p className="text-[#065F46] text-sm font-medium">
-              You save {formatINR(result.savings)} by choosing the{' '}
-              <strong>{result.winner === 'old' ? 'Old' : 'New'} Regime</strong>
-            </p>
-          </div>
-          <div className="flex flex-col md:flex-row gap-4">
-            <TaxBreakdown data={result.old_regime} label="Old Regime" isWinner={result.winner === 'old'} />
-            <TaxBreakdown data={result.new_regime} label="New Regime" isWinner={result.winner === 'new'} />
-          </div>
-          <AIExplanationCard text={result.reasoning} />
-        </>
-      )}
+        {/* Results */}
+        {result && !loading && (
+          <>
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#D1FAE5] border border-[#6EE7B7]">
+              <CheckCircle className="w-4 h-4 text-[#065F46]" />
+              <p className="text-[#065F46] text-sm font-medium">
+                You save {formatINR(result.savings)} by choosing the{' '}
+                <strong>{result.winner === 'old' ? 'Old' : 'New'} Regime</strong>
+              </p>
+            </div>
+            <div className="flex flex-col md:flex-row gap-4">
+              <TaxBreakdown data={result.old_regime} label="Old Regime" isWinner={result.winner === 'old'} />
+              <TaxBreakdown data={result.new_regime} label="New Regime" isWinner={result.winner === 'new'} />
+            </div>
+            <AIExplanationCard text={result.reasoning} />
+          </>
+        )}
+      </div>
     </div>
   );
 }
