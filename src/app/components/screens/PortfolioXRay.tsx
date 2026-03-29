@@ -293,22 +293,42 @@ export function PortfolioXRay() {
   const SipMonthPicker = ({ value, onChange, compact = false }: { value: string; onChange: (value: string) => void; compact?: boolean }) => {
     const currentYear = new Date().getFullYear();
     const yearOptions = Array.from({ length: currentYear - 1989 }, (_, i) => String(1990 + i));
-    const [selectedYear = '', selectedMonth = ''] = value ? value.split('-') : ['', ''];
+    const parseValue = (raw: string) => {
+      const parts = (raw || '').split('-');
+      const parsedYear = parts[0] ?? '';
+      const parsedMonth = parts[1] ?? '';
+      return {
+        year: /^\d{4}$/.test(parsedYear) ? parsedYear : '',
+        month: /^\d{2}$/.test(parsedMonth) ? parsedMonth : '',
+      };
+    };
+
+    const initial = parseValue(value);
+    const [selectedYear, setSelectedYear] = useState(initial.year);
+    const [selectedMonth, setSelectedMonth] = useState(initial.month);
+
+    useEffect(() => {
+      const next = parseValue(value);
+      setSelectedYear(next.year);
+      setSelectedMonth(next.month);
+    }, [value]);
 
     const handleMonthChange = (month: string) => {
-      if (!selectedYear || !month) {
+      setSelectedMonth(month);
+      if (!month) {
         onChange('');
         return;
       }
-      onChange(`${selectedYear}-${month}`);
+      if (selectedYear) onChange(`${selectedYear}-${month}`);
     };
 
     const handleYearChange = (year: string) => {
-      if (!year || !selectedMonth) {
+      setSelectedYear(year);
+      if (!year) {
         onChange('');
         return;
       }
-      onChange(`${year}-${selectedMonth}`);
+      if (selectedMonth) onChange(`${year}-${selectedMonth}`);
     };
 
     return (
