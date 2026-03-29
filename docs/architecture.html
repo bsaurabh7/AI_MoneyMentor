@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Arthmize AI — Agent Architecture</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --indigo:    #6366F1;
+    --indigo-d:  #4F46E5;
+    --indigo-bg: #EEF2FF;
+    --green:     #10B981;
+    --green-bg:  #ECFDF5;
+    --navy:      #0F172A;
+    --slate:     #1E293B;
+    --muted:     #64748B;
+    --border:    #E2E8F0;
+    --surface:   #F8FAFC;
+    --white:     #FFFFFF;
+    --purple-bg: #F5F3FF;
+    --purple:    #7C3AED;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--navy);
+    color: var(--white);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    padding: 48px 24px 32px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .logo {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 22px; font-weight: 700; color: white; margin-bottom: 10px;
+  }
+  .logo-dot {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--indigo);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800;
+  }
+  .header p {
+    font-size: 14px; color: rgba(255,255,255,.45); margin-top: 4px;
+  }
+  .hint-pill {
+    display: inline-block; margin-top: 16px;
+    background: rgba(99,102,241,.15); border: 1px solid rgba(99,102,241,.3);
+    color: #A5B4FC; font-size: 12px; padding: 6px 14px; border-radius: 20px;
+  }
+
+  /* ── Layout ── */
+  .page { display: flex; height: calc(100vh - 170px); overflow: hidden; }
+
+  /* ── Left: diagram ── */
+  .diagram-pane {
+    width: 420px; flex-shrink: 0;
+    padding: 32px 24px;
+    border-right: 1px solid rgba(255,255,255,.06);
+    display: flex; flex-direction: column; align-items: center; gap: 0;
+    overflow-y: auto;
+  }
+
+  .node {
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 12px;
+    padding: 10px 18px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .12s, box-shadow .15s;
+    text-align: center;
+    background: rgba(255,255,255,.04);
+    user-select: none;
+    width: 100%;
+  }
+  .node:hover {
+    border-color: var(--indigo);
+    background: rgba(99,102,241,.1);
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+  }
+  .node.active {
+    border-color: var(--indigo);
+    border-width: 1.5px;
+    background: rgba(99,102,241,.18);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.2);
+  }
+  .node-title { font-size: 13px; font-weight: 600; color: white; }
+  .node-sub   { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 3px; }
+
+  .node.orch  { border-color: rgba(99,102,241,.5); background: rgba(99,102,241,.12); }
+  .node.calc  { border-color: rgba(16,185,129,.4); background: rgba(16,185,129,.08); }
+  .node.calc .node-title { color: #6EE7B7; }
+  .node.db    { border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.08); }
+  .node.db .node-title { color: #6EE7B7; }
+  .node.fe    { border-color: rgba(139,92,246,.4); background: rgba(139,92,246,.1); }
+  .node.fe .node-title { color: #C4B5FD; }
+
+  .agents-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 8px; width: 100%;
+  }
+  .node.agent { font-size: 12px; padding: 9px 12px; }
+  .node.agent .node-title { font-size: 12px; }
+  .node.agent .node-sub { font-size: 10px; }
+
+  .arrow {
+    width: 1px; height: 20px;
+    background: rgba(255,255,255,.15);
+    margin: 0 auto;
+    position: relative;
+  }
+  .arrow::after {
+    content: '';
+    position: absolute; bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 6px solid rgba(255,255,255,.25);
+  }
+
+  .fork {
+    position: relative; width: 100%; height: 20px; margin: 0 auto;
+  }
+  .fork svg { width: 100%; height: 100%; overflow: visible; }
+
+  .row-2 { display: flex; gap: 10px; width: 100%; }
+  .row-2 .node { flex: 1; }
+
+  /* ── Right: detail ── */
+  .detail-pane {
+    flex: 1; overflow-y: auto;
+    padding: 32px 32px;
+    display: flex; flex-direction: column;
+  }
+
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px;
+    opacity: .35;
+  }
+  .empty-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: rgba(255,255,255,.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .empty-state p { font-size: 14px; color: rgba(255,255,255,.5); }
+
+  .detail-badge {
+    display: inline-block; font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px; margin-bottom: 10px;
+    letter-spacing: .03em;
+  }
+  .detail-title {
+    font-size: 20px; font-weight: 700; color: white; margin-bottom: 6px;
+  }
+  .detail-desc {
+    font-size: 13px; color: rgba(255,255,255,.5);
+    line-height: 1.6; margin-bottom: 20px;
+  }
+
+  .section-label {
+    font-size: 10px; font-weight: 600; letter-spacing: .08em;
+    color: rgba(255,255,255,.3); text-transform: uppercase;
+    margin-bottom: 10px; margin-top: 20px;
+  }
+  .section-label:first-of-type { margin-top: 0; }
+
+  .step {
+    display: flex; gap: 12px; align-items: flex-start;
+    padding: 12px 14px; border-radius: 10px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.07);
+    margin-bottom: 8px;
+  }
+  .step-num {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--indigo); color: white;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 1px;
+  }
+  .step-t { font-size: 13px; font-weight: 500; color: white; }
+  .step-s { font-size: 12px; color: rgba(255,255,255,.4); margin-top: 3px; line-height: 1.5; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag {
+    font-size: 11px; padding: 4px 10px; border-radius: 20px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    color: rgba(255,255,255,.5);
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center; padding: 12px;
+    font-size: 11px; color: rgba(255,255,255,.2);
+    border-top: 1px solid rgba(255,255,255,.05);
+  }
+  .footer a { color: rgba(99,102,241,.7); text-decoration: none; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 4px; }
+
+  @media (max-width: 700px) {
+    .page { flex-direction: column; height: auto; }
+    .diagram-pane { width: 100%; border-right: none; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .detail-pane { padding: 24px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-dot">A</div>
+    Arthmize AI
+  </div>
+  <p>Multi-agent financial planning system · ET AI Hackathon 2026</p>
+  <div class="hint-pill">Click any node to explore how it works</div>
+</div>
+
+<div class="page">
+
+  <!-- ── Diagram ── -->
+  <div class="diagram-pane">
+
+    <div class="node fe" data-id="fe" onclick="sel('fe')" style="margin-bottom:0">
+      <div class="node-title">Vite · React frontend</div>
+      <div class="node-sub">TypeScript · Tailwind · shadcn/ui</div>
+    </div>
+
+    <div class="arrow"></div>
+
+    <div class="node orch" data-id="orch" onclick="sel('orch')">
+      <div class="node-title">Agent orchestrator</div>
+      <div class="node-sub">Qwen-2.5-7B · tool-calling loop</div>
+    </div>
+
+    <div class="fork">
+      <svg viewBox="0 0 370 20" preserveAspectRatio="none">
+        <line x1="185" y1="0" x2="45"  y2="20" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+        <line x1="185" y1="0" x2="140" y2="20" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+        <line x1="185" y1="0" x2="230" y2="20" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+        <line x1="185" y1="0" x2="325" y2="20" stroke="rgba(255,255,255,.15)" stroke-width="1"/>
+      </svg>
+    </div>
+
+    <div class="agents-grid">
+      <div class="node agent" data-id="ins"  onclick="sel('ins')">
+        <div class="node-title">Insurance agent</div>
+        <div class="node-sub">IRDAI · Playwright</div>
+      </div>
+      <div class="node agent" data-id="sip"  onclick="sel('sip')">
+        <div class="node-title">SIP &amp; growth agent</div>
+        <div class="node-sub">AMFI · DDGS</div>
+      </div>
+      <div class="node agent" data-id="debt" onclick="sel('debt')">
+        <div class="node-title">Loan &amp; debt agent</div>
+        <div class="node-sub">RBI · payoff math</div>
+      </div>
+      <div class="node agent" data-id="fire" onclick="sel('fire')">
+        <div class="node-title">FIRE planning agent</div>
+        <div class="node-sub">compounding engine</div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+
+    <div class="row-2">
+      <div class="node calc" data-id="calc" onclick="sel('calc')">
+        <div class="node-title">finCalc.ts</div>
+        <div class="node-sub">deterministic math layer</div>
+      </div>
+      <div class="node db" data-id="db" onclick="sel('db')">
+        <div class="node-title">Supabase</div>
+        <div class="node-sub">PostgreSQL · Auth · RLS</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Detail pane ── -->
+  <div class="detail-pane" id="detail">
+    <div class="empty-state">
+      <div class="empty-icon">↖</div>
+      <p>Select a node from the diagram</p>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Built for <a href="https://github.com/bsaurabh7/AI_MoneyMentor" target="_blank">ET AI Hackathon 2026</a> ·
+  Not financial advice · SEBI disclaimer applies
+</div>
+
+<script>
+const D = {
+  fe: {
+    badge:'UI layer', bc:'#7C3AED', bb:'rgba(139,92,246,.2)',
+    title:'Vite · React frontend',
+    desc:'The chat-first interface that streams responses, renders result cards, and syncs data to Supabase on every financial update.',
+    steps:[
+      {n:1,t:'User sends message',s:'Chat input → POST /api/chat with session_id and message'},
+      {n:2,t:'Streaming response',s:'FastAPI Server-Sent Events stream tokens back in real-time'},
+      {n:3,t:'Render result cards',s:'ChatTaxCard and ChatFireCard render deterministic numbers from finCalc.ts'},
+      {n:4,t:'Background persist',s:'Every financial data point triggers a non-blocking upsert to Supabase'},
+      {n:5,t:'Profile sync',s:'Wizard completion writes full profile; chat fills remaining fields incrementally'},
+    ],
+    tags:['React 18','TypeScript','Tailwind CSS','Framer Motion','shadcn/ui','Recharts','Supabase SSR'],
+  },
+  orch: {
+    badge:'Brain', bc:'#4338CA', bb:'rgba(99,102,241,.2)',
+    title:'Agent orchestrator',
+    desc:'The central controller. Classifies user intent, decides which agent to call, manages the tool-calling loop, and injects live data back into context before responding.',
+    steps:[
+      {n:1,t:'Intent classification',s:'Qwen-2.5-7B reads the message and decides: tax / FIRE / insurance / debt / portfolio'},
+      {n:2,t:'Tool-call emission',s:'If live data needed → emits internet_search or web_scrape tool_call (OpenAI-compatible format)'},
+      {n:3,t:'Tool execution',s:'Backend runs DDGS search or Playwright scrape and returns raw content'},
+      {n:4,t:'Context injection',s:'Tool output injected back into LLM context window for informed reasoning'},
+      {n:5,t:'Agent delegation',s:'Routes to specialized agent with enriched context + user profile'},
+      {n:6,t:'Guardrail append',s:'SEBI disclaimer injected before every response containing financial figures'},
+    ],
+    tags:['Qwen-2.5-7B-Instruct','HuggingFace Inference API','OpenAI-compatible tool-calling','FastAPI','SSE streaming'],
+  },
+  ins: {
+    badge:'Specialized agent', bc:'#065F46', bb:'rgba(16,185,129,.12)',
+    title:'Insurance agent',
+    desc:'Detects coverage gaps from the user profile, fetches live IRDAI data, and presents the top 5 plans ranked by claim settlement ratio.',
+    steps:[
+      {n:1,t:'Coverage gap check',s:'Reads has_term_insurance and has_health_insurance from collected profile'},
+      {n:2,t:'Live IRDAI scrape',s:'Playwright stealth → irdai.gov.in for claim settlement ratios by insurer'},
+      {n:3,t:'DDGS web search',s:'"best term insurance India 2025 claim settlement ratio" → top 3 URLs'},
+      {n:4,t:'Gemini extraction',s:'Raw HTML → Gemini Flash → structured JSON: name, premium, CSR%, trust rating, link'},
+      {n:5,t:'Present top 5',s:'Sorted by claim settlement rate · premium · coverage. Includes purchase links.'},
+      {n:6,t:'Age-aware pricing',s:'Estimates premium using user age — "at 28, a ₹1Cr cover costs ~₹8,000/year"'},
+    ],
+    tags:['Playwright stealth','IRDAI.gov.in','DuckDuckGo Search','Gemini structured output','Google API','SEBI compliant'],
+  },
+  sip: {
+    badge:'Specialized agent', bc:'#065F46', bb:'rgba(16,185,129,.12)',
+    title:'SIP & growth agent',
+    desc:'Calculates goal-based SIP requirements using deterministic math, then fetches live fund performance to match recommendations to the user\'s risk profile.',
+    steps:[
+      {n:1,t:'Goal collection',s:'Reads retire_age, goals[], monthly_sip, risk_profile from collected profile'},
+      {n:2,t:'SIP math in finCalc.ts',s:'PMT = corpus × r / [(1+r)^n − 1] — pure deterministic, zero LLM involvement'},
+      {n:3,t:'Live NAV fetch',s:'Playwright → amfiindia.com for current NAV + 3-year and 5-year CAGR data'},
+      {n:4,t:'DDGS market news',s:'"top large cap mutual fund India 5 year CAGR 2025" → market context'},
+      {n:5,t:'Gemini extraction',s:'Raw AMFI data → structured JSON: fund name, NAV, 3Y return, 5Y return, category'},
+      {n:6,t:'Recommend top 3',s:'Filtered by user risk_profile (conservative / moderate / aggressive) and age'},
+    ],
+    tags:['finCalc.ts PMT formula','AMFI India','Playwright','DDGS','Gemini JSON','Goal-based SIP','Risk profiling'],
+  },
+  debt: {
+    badge:'Specialized agent', bc:'#065F46', bb:'rgba(16,185,129,.12)',
+    title:'Loan & debt agent',
+    desc:'Scans liabilities, fetches the current RBI repo rate, and decides whether to prioritise debt clearance or parallel investing.',
+    steps:[
+      {n:1,t:'Liability scan',s:'Reads home_loan_emi, car_loan_emi, credit_card_debt, other_emis from profile'},
+      {n:2,t:'RBI rate fetch',s:'Playwright → rbi.org.in for current repo rate and base lending rate'},
+      {n:3,t:'High-interest detection',s:'Credit card > 18% or personal loan > 12% → clear this before investing'},
+      {n:4,t:'Payoff strategy',s:'finCalc.ts computes avalanche (highest-rate first) vs snowball (smallest-balance first)'},
+      {n:5,t:'Home loan advice',s:'Loan ≤ 8.5% → invest alongside. Higher → extra EMI or lump-sum prepayment.'},
+      {n:6,t:'EMI relief estimate',s:'Projects monthly cashflow freed after each debt closure — feeds into SIP capacity'},
+    ],
+    tags:['RBI.org.in','Playwright stealth','finCalc.ts','Debt avalanche','Debt snowball','EMI optimisation'],
+  },
+  fire: {
+    badge:'Specialized agent', bc:'#065F46', bb:'rgba(16,185,129,.12)',
+    title:'FIRE planning agent',
+    desc:'Builds the complete retirement roadmap — corpus, SIP, feasibility, and per-goal overlays — using deterministic compounding with zero LLM calculation.',
+    steps:[
+      {n:1,t:'Profile read',s:'age, retire_age, monthly_expense, current_savings, expected_return from wizard + chat'},
+      {n:2,t:'Inflation-adjusted corpus',s:'annual_expense × (1.06)^years_to_retire × 25 (4% safe withdrawal rule)'},
+      {n:3,t:'SIP requirement',s:'finCalc.ts PMT formula after subtracting FV of existing savings'},
+      {n:4,t:'Feasibility scoring',s:'SIP ≤ 30% income → On Track · ≤ 50% → Stretch Goal · > 50% → Needs Revision'},
+      {n:5,t:'Goal overlay',s:'Per-goal SIPs (car, PC, education) stacked on top of retirement SIP requirement'},
+      {n:6,t:'What-if simulation',s:'User changes retire_age → recalculates corpus + SIP instantly, no new API call'},
+    ],
+    tags:['finCalc.ts','4% withdrawal rule','Inflation 6%','Goal-based planning','What-if simulator','Feasibility bands'],
+  },
+  calc: {
+    badge:'Core engine', bc:'#065F46', bb:'rgba(16,185,129,.15)',
+    title:'finCalc.ts — deterministic math layer',
+    desc:'Pure TypeScript functions that calculate every financial figure in the app. No LLM involved. All results are auditable and reproducible.',
+    steps:[
+      {n:1,t:'Tax calculation',s:'Old vs New regime FY 2025-26 slabs · HRA exemption formula · 87A rebate · 4% cess'},
+      {n:2,t:'FIRE compounding',s:'FV = PV×(1+r)^n · SIP PMT = corpus×r/[(1+r)^n−1] · inflation-adjusted corpus'},
+      {n:3,t:'Money Health Score',s:'6-dimension scoring: emergency months, insurance coverage, SIP rate, EMI ratio, tax efficiency, retirement readiness'},
+      {n:4,t:'Portfolio overlap',s:'Category intersection matrix · weighted average expense ratio · XIRR via Newton-Raphson'},
+      {n:5,t:'Loan payoff math',s:'Avalanche: sort by rate desc · Snowball: sort by balance asc · Monthly cashflow projection'},
+    ],
+    tags:['Pure TypeScript','No LLM involved','FY 2025-26 tax slabs','4% rule','Newton-Raphson XIRR','Always auditable'],
+  },
+  db: {
+    badge:'Infrastructure', bc:'#166534', bb:'rgba(52,211,153,.12)',
+    title:'Supabase — database & auth',
+    desc:'PostgreSQL with Row Level Security enforced on every table. Users can only read and write their own rows — even with a leaked anon key.',
+    steps:[
+      {n:1,t:'Auth — Email OTP + Google',s:'Supabase Auth handles OTP expiry, JWT refresh tokens, httpOnly cookies via @supabase/ssr'},
+      {n:2,t:'Row Level Security',s:'RLS enabled on all tables: auth.uid() = user_id policy on every SELECT, INSERT, UPDATE'},
+      {n:3,t:'Two client strategy',s:'Anon key (frontend, limited) · Service role key (backend only, bypasses RLS for writes)'},
+      {n:4,t:'Incremental sync',s:'Every chat turn that updates a financial field triggers a non-blocking background upsert'},
+      {n:5,t:'Tables',s:'user_profiles · tax_calculations · fire_plans · health_scores · portfolio_funds · portfolio_analysis'},
+    ],
+    tags:['PostgreSQL','Row Level Security','Supabase Auth','JWT + httpOnly cookies','Service role (backend only)','Anon key (frontend)'],
+  },
+};
+
+function sel(id) {
+  document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll(`[data-id="${id}"]`).forEach(n => n.classList.add('active'));
+  const d = D[id];
+  const pane = document.getElementById('detail');
+  pane.innerHTML = `
+    <span class="detail-badge" style="color:${d.bc};background:${d.bb}">${d.badge}</span>
+    <div class="detail-title">${d.title}</div>
+    <div class="detail-desc">${d.desc}</div>
+    <div class="section-label">How it works</div>
+    ${d.steps.map(s=>`
+      <div class="step">
+        <div class="step-num">${s.n}</div>
+        <div>
+          <div class="step-t">${s.t}</div>
+          <div class="step-s">${s.s}</div>
+        </div>
+      </div>`).join('')}
+    <div class="section-label" style="margin-top:16px">Technologies</div>
+    <div class="tags">${d.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+  `;
+}
+</script>
+</body>
+</html>
