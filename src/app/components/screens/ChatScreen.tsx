@@ -204,7 +204,7 @@ export function ChatScreen() {
   };
 
   return (
-    <div className="flex h-full relative" style={{ fontFamily: 'Inter, sans-serif' }}>
+    <div className="flex h-full relative pb-0" style={{ fontFamily: 'Inter, sans-serif' }}>
       {/* ── Loading Overlay ─────────────────────────────────────── */}
       {authLoading && (
         <div className="absolute inset-0 z-50 bg-[#F8FAFC] flex flex-col items-center justify-center">
@@ -362,9 +362,9 @@ export function ChatScreen() {
             </button>
           </div>
 
-          <div className="px-4 pt-2 pb-0 bg-white border-t border-[#E2E8F0]">
+          {/* <div className="px-4 pt-2 pb-0 bg-white border-t border-[#E2E8F0]">
             <DisclaimerBanner />
-          </div>
+          </div> */}
         </div>
 
         {/* Profile Lock Overlay (Total Portal Lock) */}
