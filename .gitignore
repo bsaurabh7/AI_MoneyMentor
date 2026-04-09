@@ -7,3 +7,4 @@ dist/
 .vscode/
 venv/
 __pycache__/
+.env_dev
